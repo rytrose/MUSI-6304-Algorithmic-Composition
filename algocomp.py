@@ -25,7 +25,6 @@ class WordComp:
         self.currentLength = 0
 
         self.getWordSoundFile()
-        self.analyzeSoundFile()
         self.generateSong()
         self.cleanFiles()
 
@@ -62,10 +61,6 @@ class WordComp:
         except:
             print("Unable to get a sound file for this word, please try a different word.")
 
-    def analyzeSoundFile(self):
-        pass
-
-
     def generateSong(self):
         self.master = AudioSegment.silent(0)
         y, sr = librosa.load(self.fileName, 44100)
@@ -79,15 +74,41 @@ class WordComp:
         s_delay = self.getSegmentWithEffect(s, delay)
         fx = (
             AudioEffectsChain()
+                .pitch(-2400)
                 .reverb(room_scale=100)
         )
-        s_fx = self.getSegmentWithEffect(s, fx)
-        self.addToMaster(s_fx, 0)
+        s_fx = self.getSegmentWithEffect(s + AudioSegment.silent(1000), fx)
+        print(len(s_fx))
+
+        s_slow = self.getSegmentWithEffect(s, librosa.effects.time_stretch, 0.2)
+        s_tremelo = self.getSegmentWithEffect(s_slow, (AudioEffectsChain().tremolo(800)))
+        self.addToMaster(s_tremelo*5, 0)
+        # s_dense = self.getDense(s, 50)
+        # self.addToMaster(s_dense * 90, 0)
+        # s_third = self.getSegmentWithEffect(s_dense, (AudioEffectsChain().pitch(400)))
+        # self.addToMaster(s_third * 60, len(s_dense) * 30)
+        # s_fifth = self.getSegmentWithEffect(s_dense, (AudioEffectsChain().pitch(700)))
+        # self.addToMaster(s_fifth * 30, len(s_dense) * 60)
         # self.addToMaster(s_low, len(s))
         # self.addToMaster(s_slow, len(s) + len(s_low))
         # self.addToMaster(s_delay, len(s) + len(s_low) + len(s_slow))
 
         play(self.master)
+
+    def getDense(self, segment, dur):
+        samples = [abs(s) for s in segment.get_array_of_samples()]
+        density = 0
+        densest = 0
+
+        i = 0
+        while i * dur < len(segment):
+            this_sum = sum(samples[math.floor(i*dur*(segment.frame_rate / 1000)):min(math.floor((i+1)*dur*(segment.frame_rate / 1000)), len(samples))])
+            if(this_sum > density):
+                density = this_sum
+                densest = i
+            i = i + 1
+
+        return segment[densest*dur:min((densest+1)*dur, len(segment))]
 
     def cleanFiles(self):
         word_dir = Path('./' + self.word)
@@ -114,4 +135,4 @@ class WordComp:
         self.master = self.master.overlay(segment, position=position)
 
 
-wc = WordComp('cower')
+wc = WordComp('cat')
