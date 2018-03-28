@@ -9,6 +9,7 @@ from pydub.effects import *
 from pydub.generators import *
 from pysndfx import AudioEffectsChain
 import numpy as np
+from music21 import *
 import librosa as librosa
 import math
 import random
@@ -85,9 +86,11 @@ class WordComp:
         bpm_tempo = 134
         self.beat = math.floor(60000 / bpm_tempo)
 
-        # pos = self.intro()
         pos = 0
-        self.section1(pos)
+        # pos = self.intro()
+        # pos = self.transition_morph_to_beat(pos, 4)
+        # self.club_beat(pos)
+        self.chordal(pos)
 
         # s_low = self.getSegmentWithEffect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
         # s_slow = self.getSegmentWithEffect(s, librosa.effects.time_stretch, 0.2)
@@ -121,7 +124,7 @@ class WordComp:
 
         # fx = lambda t: (
         #     AudioEffectsChain()
-        #         .lowpass(1000 * Curve(math.sin, 4).val(t))
+        #         .overdrive(Curve(math.sin, 0.5).val(t))
         # )
         #
         # self.master = self.getSegmentWithEffectOverTime(self.master, fx)
@@ -136,19 +139,19 @@ class WordComp:
     def intro(self):
         pos = 0
         self.addToMaster(self.s, 0)
-        pos = 4 * self.tempo
+        pos = 4 * self.beat
         self.addToMaster(self.s, pos)
-        pos += 4 * self.tempo
+        pos += 4 * self.beat
         for i in range(2):
             self.addToMaster(apply_gain_stereo(self.s, left_gain=1.0, right_gain=-3*i), pos)
-            pos += 1 * self.tempo
+            pos += 1 * self.beat
             self.addToMaster(apply_gain_stereo(self.s, left_gain=-3*i, right_gain=1.0), pos)
-            pos += 1 * self.tempo
+            pos += 1 * self.beat
         for i in range(2):
             self.addToMaster(apply_gain_stereo(self.s, left_gain=1.0, right_gain=-6 - (3*i)), pos)
-            pos += 0.5 * self.tempo
+            pos += 0.5 * self.beat
             self.addToMaster(apply_gain_stereo(self.s, left_gain=-6 - (3*i), right_gain=1.0), pos)
-            pos += 0.5 * self.tempo
+            pos += 0.5 * self.beat
 
         for i in range(8):
             for i in range(2):
@@ -164,11 +167,24 @@ class WordComp:
         pos += self.beat
         return pos
 
-    def section1(self, pos):
+    def transition_morph_to_beat(self, pos, iterations):
+        sliceLen = len(self.s) / 4
+
+        i = sliceLen
+
+        while i < self.beat:
+            for j in range(3):
+                pos = self.addToMaster(self.s[j * len(self.s) / 4:(j + 1) * (len(self.s) / 4)], pos + (i - sliceLen))
+            pos = self.addToMaster(AudioSegment.silent(sliceLen), pos + (i - sliceLen))
+
+            i += (self.beat - sliceLen) / iterations
+
+        return pos
+
+    def club_beat(self, pos):
         for i in range(32):
             self.addToMaster(self.kick, pos)
             num_beats = random.randrange(0, 4, 1)
-            print(num_beats)
 
             ind = random.randrange(0, 2, 1)
             note = self.s[ind * len(self.s) / 4:(ind + 1) * (len(self.s) / 4)]
@@ -176,69 +192,48 @@ class WordComp:
                 self.addToMaster(self.getSegmentWithEffect(note, librosa.effects.pitch_shift, 22050, n_steps=random.randrange(-12, 12, 1)), pos + (j * math.floor(self.beat / num_beats)))
 
             pos += self.beat
+        return pos
 
-    def inClassSong(self):
-        s = AudioSegment.from_file("nggyu.mp3")
-        chorus = s[43200:60000]
+    def chordal(self, pos):
+        bass, _, _ = self.getDense(self.s, self.beat / 2)
+        bass = self.getSegmentWithEffect(bass, librosa.effects.pitch_shift, 22050, n_steps=-24)
+        lp_fx = (
+            AudioEffectsChain()
+                .lowpass(1500)
+        )
+        bass = self.getSegmentWithEffect(bass, lp_fx)
+        bass = self.getSegmentWithEffect(bass, librosa.effects.time_stretch, 0.25)
+        bass, _, _ = self.getDense(bass, self.beat)
+        root = self.estimatePitch(bass)
 
-        front_ptr = 0
-        back_ptr = len(chorus)
+        for i in [0, 4, 7, -1]:
+            note = self.s[0:(1 * (len(self.s))) / 4]
+            note = self.matchPitch(note, root, i)
+            note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / self.beat)
+            note = note[0:min(self.beat, len(note) - 1)]
+            print(self.beat)
+            print(len(note))
 
-        master = AudioSegment.silent(0)
-        center = 0
+            # cmaj7_chord = self.makeChord(note, [-24, -8, 7, 23])
+            # dmaj7_chord = self.makeChord(self.matchPitch(note, self.estimatePitch(note), 2), cmaj7.pitchClasses)
 
-        while front_ptr < back_ptr:
-            if (front_ptr < (len(chorus) / 6)):
-                center = center + 1
-            else:
-                center = center - 1
+            self.addToMaster(bass * 2, pos)
+            pos = self.addToMaster(note * 2, pos)
+            # self.addToMaster(cmaj7_chord * 4, pos)
+            # self.addToMaster(cmaj7_chord * 4, pos + (4 * self.beat))
 
-            sample_length = np.random.exponential(200)
-            sample_length = min(500, sample_length)
-            print("Sample Length : " + str(sample_length))
+        note = self.s[0:(1 * (len(self.s))) / 4]
+        note = self.matchPitch(note, root, 0)
+        note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / (4 * self.beat))
+        note, _, _ = self.getDense(note, self.beat)
+        note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / (4 * self.beat))
+        note = note[0:min(4*self.beat, 4*(len(note) - 1))]
+        self.addToMaster(bass * 4, pos)
+        self.addToMaster(self.makeChord(note, [-1, 0, 4, 7]), pos)
 
-            pitch_shift_front = np.random.normal(center, 2)
-            pitch_shift_front = math.floor(pitch_shift_front)
-            print("Pitch Front: " + str(pitch_shift_front))
 
-            pitch_shift_back = np.random.normal(center, 2)
-            pitch_shift_back = math.floor(pitch_shift_back)
-            print("Pitch Back: " + str(pitch_shift_back))
-
-            stutter_n = np.random.exponential(2)
-            stutter_n = math.floor(min(5, stutter_n))
-            print("Stutter: " + str(stutter_n))
-
-            reverb_val = np.random.geometric(0.05)
-            reverb_val = max(1, reverb_val)
-            reverb_val = min(100, reverb_val)
-            print("Reverb Room Size: " + str(reverb_val))
-
-            fx_front = (
-                AudioEffectsChain()
-                    .pitch(100 * pitch_shift_front)
-                    .reverb(reverb_val)
-            )
-            front = self.getSegmentWithEffect(chorus[front_ptr:front_ptr + sample_length], fx_front)
-            master = master + (front * stutter_n)
-
-            noise = WhiteNoise().to_audio_segment(200, -15)
-            master = master + noise
-
-            fx_back = (
-                AudioEffectsChain()
-                    .pitch(100 * pitch_shift_back)
-                    .reverse()
-                    .reverb(reverb_val)
-            )
-            back = self.getSegmentWithEffect(chorus[back_ptr - sample_length:back_ptr], fx_back)
-            master = master + (back * stutter_n)
-            master = master + noise
-
-            front_ptr = front_ptr + sample_length
-            back_ptr = back_ptr - sample_length
-
-        play(master)
+        # fmaj7 = chord.Chord(["F3", "A3", "C4", "E4"])
+        # print(fmaj7.pitchClasses)
 
     def getDense(self, segment, dur):
         samples = [abs(s) for s in segment.get_array_of_samples()]
@@ -273,13 +268,12 @@ class WordComp:
 
     def getSegmentWithEffectOverTime(self, segment, effectFunctionOverTime, *args, **kwargs):
         i = 0
-        # y_affected = np.array()
         temp_segment_filename = self.word + "/" + str(uuid.uuid4()) + ".wav"
         temp_affected_filename = self.word + "/" + str(uuid.uuid4()) + ".wav"
         segment.export(temp_segment_filename, format="wav")
         y, sr = librosa.load(temp_segment_filename)
 
-        chunk_size = math.floor(sr / 10)
+        chunk_size = math.floor(sr / 4)
 
         while i < len(y) - 1:
             print("On " + str(i) + " of " + str(len(y)))
@@ -290,6 +284,42 @@ class WordComp:
         librosa.output.write_wav(temp_affected_filename, y, sr)
 
         return AudioSegment.from_file(temp_affected_filename)
+
+    def makeChord(self, segment, chord_list):
+        final_chord = AudioSegment.silent(len(segment))
+
+        root = self.estimatePitch(segment)
+
+        for val in chord_list:
+            final_chord = final_chord.overlay(self.matchPitch(segment, root, val))
+
+        return final_chord
+
+    def estimatePitch(self, segment):
+        temp_segment_filename = self.word + "/" + str(uuid.uuid4()) + ".wav"
+        segment.export(temp_segment_filename, format="wav")
+        y, sr = librosa.load(temp_segment_filename)
+        chroma_fb = librosa.feature.chroma_stft(y, sr)
+        mean = np.mean(chroma_fb, axis=1)
+        ind = np.argmax(mean)
+
+        return ind
+
+    def matchPitch(self, segment, reference, difference):
+        i = 0
+        segment_pitch = self.estimatePitch(segment)
+        dest = (reference + difference) % 12
+        while segment_pitch % 12 != dest:
+            segment = self.getSegmentWithEffect(segment, librosa.effects.pitch_shift, 22050, n_steps=reference - (segment_pitch - difference))
+            segment_pitch = self.estimatePitch(segment)
+            if i > 5:
+                break
+            i += 1
+
+        if i > 5:
+            print("Did not converge, off by:" + str(reference - (segment_pitch - difference)))
+
+        return segment
 
     def addToMaster(self, segment, position):
         if len(segment) + position > len(self.master):
@@ -306,6 +336,6 @@ class Curve:
         self.amp = amp
 
     def val(self, t):
-        return abs(self.amp * self.func(self.freq * t)) + 0.00001
+        return self.amp * self.func(self.freq * t)
 
 wc = WordComp('cower')
