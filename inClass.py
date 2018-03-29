@@ -40,7 +40,7 @@ def inClassSong(self):
                 .pitch(100 * pitch_shift_front)
                 .reverb(reverb_val)
         )
-        front = self.getSegmentWithEffect(chorus[front_ptr:front_ptr + sample_length], fx_front)
+        front = self.get_segment_with_effect(chorus[front_ptr:front_ptr + sample_length], fx_front)
         master = master + (front * stutter_n)
 
         noise = WhiteNoise().to_audio_segment(200, -15)
@@ -52,7 +52,7 @@ def inClassSong(self):
                 .reverse()
                 .reverb(reverb_val)
         )
-        back = self.getSegmentWithEffect(chorus[back_ptr - sample_length:back_ptr], fx_back)
+        back = self.get_segment_with_effect(chorus[back_ptr - sample_length:back_ptr], fx_back)
         master = master + (back * stutter_n)
         master = master + noise
 
