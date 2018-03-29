@@ -89,58 +89,19 @@ class WordComp:
 
         pos = 0
         pos = self.intro()
-
         # pos = self.transition_morph_to_beat(pos, 4)
+        pos = self.club_beat(pos)
+        pos = self.transition_stretch(pos, 8, 4)
+        pos = self.chordal(pos)
 
-        # pos = self.club_beat(pos)
-        # pos = self.transition_stretch(pos, 8, 4)
-        # pos = self.chordal(pos)
-
-        # s_low = self.getSegmentWithEffect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
-        # s_slow = self.getSegmentWithEffect(s, librosa.effects.time_stretch, 0.2)
-        # delay = (AudioEffectsChain().delay())
-        # s_delay = self.getSegmentWithEffect(s, delay)
-        # fx = (
+        # reverb = (
         #     AudioEffectsChain()
-        #         .pitch(-2400)
-        #         .reverb(room_scale=100)
-        # )
-        # s_fx = self.getSegmentWithEffect(s + AudioSegment.silent(1000), fx)
-        # s_dense, i1, i2 = self.getDense(s, 50)
-        # self.addToMaster(s_dense * 90, 0)
-        # s_third = self.getSegmentWithEffect(s_dense, (AudioEffectsChain().pitch(400)))
-        # self.addToMaster(s_third * 60, len(s_dense) * 30)
-        # s_fifth = self.getSegmentWithEffect(s_dense, (AudioEffectsChain().pitch(700)))
-        # self.addToMaster(s_fifth * 30, len(s_dense) * 60)
-        # self.addToMaster(s_low, len(s))
-        # self.addToMaster(s_slow, len(s) + len(s_low))
-        # self.addToMaster(s_delay, len(s) + len(s_low) + len(s_slow))
-
-        # s = AudioSegment.from_file("newsheadlines.mp3")
-        # fx = lambda t: (
-        #     AudioEffectsChain()
-        #         .lowpass(800 * Curve(math.sin).val(t))
+        #         .reverb(2)
         # )
 
-        # s_fx = self.getSegmentWithEffectOverTime(s, fx)
-        # s_fx = self.getSegmentWithEffect(s, fx)
-        # self.addToMaster(s_fx, 0)
-
-        # fx = lambda t: (
-        #     AudioEffectsChain()
-        #         .overdrive(Curve(math.sin, 0.5).val(t))
-        # )
-        #
-        # self.master = self.getSegmentWithEffectOverTime(self.master, fx)
-
-        reverb = (
-            AudioEffectsChain()
-                .reverb(2)
-        )
-
-        self.master = self.getSegmentWithEffect(self.master, reverb)
-        self.master = self.master.set_channels(2)
+        # self.master = self.getSegmentWithEffect(self.master, reverb)
         play(self.master + AudioSegment.silent(1000))
+        self.master.export("draft.wav", format="wav")
 
     def intro(self):
         pos = 0
@@ -240,18 +201,28 @@ class WordComp:
             chord_one = chord_one + AudioSegment.silent((chord_length * self.beat) - len(chord_one))
         chord_two = self.getSegmentWithEffect(chord_one, librosa.effects.pitch_shift, 22050, n_steps=5)
 
+        self.addToMaster(note.fade_in(10).fade_out(1000), pos)
+        pos += math.floor(len(note) / 3)
+        self.addToMaster(self.makeChord(note, [-1,0]).fade_in(10).fade_out(1000)[0:math.floor((2 * len(note)) / 3)] - 4, pos)
+        pos += math.floor(len(note) / 3)
+        self.addToMaster(self.makeChord(note, [-1, 0, 7]).fade_in(10).fade_out(1000)[0:math.floor((len(note)) / 3)] - 8, pos)
+        pos += math.floor(len(note) / 3)
+
         bass_pos = pos
 
         for section in range(2):
             if (section == 0):
-                hi_hat_pos = pos
-                self.addToMaster(self.closed_hat, hi_hat_pos + (((chord_length * 2) - 4) * self.beat))
-                hi_hat_pos += hi_hat_pos + (((chord_length * 2) - 4) * self.beat) + self.beat
+                hi_hat_pos = pos + (((chord_length * 2) - 4) * self.beat)
                 self.addToMaster(self.closed_hat, hi_hat_pos)
                 hi_hat_pos += self.beat
-                for i in range(4):
+                self.addToMaster(self.closed_hat, hi_hat_pos)
+                hi_hat_pos += self.beat
+                for i in range(2):
                     self.addToMaster(self.closed_hat, hi_hat_pos)
                     hi_hat_pos += (self.beat / 2)
+                for i in range(3):
+                    self.addToMaster(self.closed_hat, hi_hat_pos)
+                    hi_hat_pos += (self.beat / 3)
             else:
                 trip_beat = np.random.choice(range(4))
                 quarter_beat = np.random.choice(range(4))
@@ -270,15 +241,15 @@ class WordComp:
 
 
             for i in range(math.floor(chord_length / 2)):
-                self.addToMaster(self.getSegmentWithEffect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice(chord_vals)), bass_pos)
+                self.addToMaster(self.getSegmentWithEffect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice(chord_vals)).fade_in(10), bass_pos)
                 bass_pos += len(bass_half_note)
             for i in range(math.floor(chord_length / 2)):
-                self.addToMaster(self.getSegmentWithEffect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice([v + 5 for v in chord_vals])), bass_pos)
+                self.addToMaster(self.getSegmentWithEffect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice([v + 5 for v in chord_vals])).fade_in(10), bass_pos)
                 bass_pos += len(bass_half_note)
 
-            pos = self.addToMaster(chord_one, pos)
+            pos = self.addToMaster(chord_one.fade_in(200), pos)
             self.addToMaster(self.crash - 8, pos)
-            pos = self.addToMaster(chord_two, pos)
+            pos = self.addToMaster(chord_two.fade_in(200), pos)
 
     def getDense(self, segment, dur):
         samples = [abs(s) for s in segment.get_array_of_samples()]
@@ -383,4 +354,42 @@ class Curve:
     def val(self, t):
         return self.amp * self.func(self.freq * t)
 
-wc = WordComp('garlic')
+wc = WordComp('furniture')
+
+# ---------------- NOTES ---------------
+# s_low = self.getSegmentWithEffect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
+# s_slow = self.getSegmentWithEffect(s, librosa.effects.time_stretch, 0.2)
+# delay = (AudioEffectsChain().delay())
+# s_delay = self.getSegmentWithEffect(s, delay)
+# fx = (
+#     AudioEffectsChain()
+#         .pitch(-2400)
+#         .reverb(room_scale=100)
+# )
+# s_fx = self.getSegmentWithEffect(s + AudioSegment.silent(1000), fx)
+# s_dense, i1, i2 = self.getDense(s, 50)
+# self.addToMaster(s_dense * 90, 0)
+# s_third = self.getSegmentWithEffect(s_dense, (AudioEffectsChain().pitch(400)))
+# self.addToMaster(s_third * 60, len(s_dense) * 30)
+# s_fifth = self.getSegmentWithEffect(s_dense, (AudioEffectsChain().pitch(700)))
+# self.addToMaster(s_fifth * 30, len(s_dense) * 60)
+# self.addToMaster(s_low, len(s))
+# self.addToMaster(s_slow, len(s) + len(s_low))
+# self.addToMaster(s_delay, len(s) + len(s_low) + len(s_slow))
+
+# s = AudioSegment.from_file("newsheadlines.mp3")
+# fx = lambda t: (
+#     AudioEffectsChain()
+#         .lowpass(800 * Curve(math.sin).val(t))
+# )
+
+# s_fx = self.getSegmentWithEffectOverTime(s, fx)
+# s_fx = self.getSegmentWithEffect(s, fx)
+# self.addToMaster(s_fx, 0)
+
+# fx = lambda t: (
+#     AudioEffectsChain()
+#         .overdrive(Curve(math.sin, 0.5).val(t))
+# )
+#
+# self.master = self.getSegmentWithEffectOverTime(self.master, fx)
