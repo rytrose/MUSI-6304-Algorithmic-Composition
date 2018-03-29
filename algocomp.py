@@ -9,7 +9,6 @@ from pydub.effects import *
 from pydub.generators import *
 from pysndfx import AudioEffectsChain
 import numpy as np
-from music21 import *
 import librosa as librosa
 import math
 import random
@@ -77,20 +76,25 @@ class WordComp:
         self.s = AudioSegment.from_file(self.word + "/trim_" + self.word + ".wav")
 
         # Create percussion segments
-        self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_06.wav")
+        self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_Ana_01.wav")
         self.open_hat = AudioSegment.from_file("perc/Open_Hat_19.wav")
         self.snare = AudioSegment.from_file("perc/Snare_09.wav")
         self.kick = AudioSegment.from_file("perc/Kick_016.wav")
+        self.crash = AudioSegment.from_file("perc/Crash_13b.wav")
+
 
         # Set tempo (set in BPM, calculated to mspb)
         bpm_tempo = 134
         self.beat = math.floor(60000 / bpm_tempo)
 
         pos = 0
-        # pos = self.intro()
+        pos = self.intro()
+
         # pos = self.transition_morph_to_beat(pos, 4)
-        # self.club_beat(pos)
-        self.chordal(pos)
+
+        # pos = self.club_beat(pos)
+        # pos = self.transition_stretch(pos, 8, 4)
+        # pos = self.chordal(pos)
 
         # s_low = self.getSegmentWithEffect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
         # s_slow = self.getSegmentWithEffect(s, librosa.effects.time_stretch, 0.2)
@@ -133,7 +137,9 @@ class WordComp:
             AudioEffectsChain()
                 .reverb(2)
         )
+
         self.master = self.getSegmentWithEffect(self.master, reverb)
+        self.master = self.master.set_channels(2)
         play(self.master + AudioSegment.silent(1000))
 
     def intro(self):
@@ -181,6 +187,13 @@ class WordComp:
 
         return pos
 
+    def transition_stretch(self, pos, iterations, length):
+        for i in range(iterations):
+            pos = self.addToMaster(self.getSegmentWithEffect(self.s, librosa.effects.time_stretch, len(self.s)/((length/(iterations - i)) * len(self.s))), pos)
+
+        return pos
+
+
     def club_beat(self, pos):
         for i in range(32):
             self.addToMaster(self.kick, pos)
@@ -200,40 +213,72 @@ class WordComp:
         lp_fx = (
             AudioEffectsChain()
                 .lowpass(1500)
+                .highpass(100)
         )
         bass = self.getSegmentWithEffect(bass, lp_fx)
         bass = self.getSegmentWithEffect(bass, librosa.effects.time_stretch, 0.25)
         bass, _, _ = self.getDense(bass, self.beat)
+        if(len(bass) < self.beat):
+            bass = bass + AudioSegment.silent(self.beat - len(bass))
         root = self.estimatePitch(bass)
-
-        for i in [0, 4, 7, -1]:
-            note = self.s[0:(1 * (len(self.s))) / 4]
-            note = self.matchPitch(note, root, i)
-            note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / self.beat)
-            note = note[0:min(self.beat, len(note) - 1)]
-            print(self.beat)
-            print(len(note))
-
-            # cmaj7_chord = self.makeChord(note, [-24, -8, 7, 23])
-            # dmaj7_chord = self.makeChord(self.matchPitch(note, self.estimatePitch(note), 2), cmaj7.pitchClasses)
-
-            self.addToMaster(bass * 2, pos)
-            pos = self.addToMaster(note * 2, pos)
-            # self.addToMaster(cmaj7_chord * 4, pos)
-            # self.addToMaster(cmaj7_chord * 4, pos + (4 * self.beat))
+        bass_half_note = self.getSegmentWithEffect(bass, librosa.effects.time_stretch, 0.5)
+        bass_half_note = bass_half_note[0:min(self.beat * 2, len(bass_half_note))]
+        if (len(bass_half_note) < (2 * self.beat)):
+            bass_half_note = bass_half_note + AudioSegment.silent(2 * self.beat - len(bass))
 
         note = self.s[0:(1 * (len(self.s))) / 4]
         note = self.matchPitch(note, root, 0)
         note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / (4 * self.beat))
         note, _, _ = self.getDense(note, self.beat)
-        note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / (4 * self.beat))
-        note = note[0:min(4*self.beat, 4*(len(note) - 1))]
-        self.addToMaster(bass * 4, pos)
-        self.addToMaster(self.makeChord(note, [-1, 0, 4, 7]), pos)
+        chord_length = 16
+        note = self.getSegmentWithEffect(note, librosa.effects.time_stretch, len(note) / (chord_length * self.beat))
+        note = note[0:min(chord_length*self.beat, chord_length*(len(note) - 1))]
+
+        chord_vals = [-1, 0, 4, 7]
+        chord_one = self.makeChord(note, chord_vals) - 8
+        if(len(chord_one) < chord_length * self.beat):
+            chord_one = chord_one + AudioSegment.silent((chord_length * self.beat) - len(chord_one))
+        chord_two = self.getSegmentWithEffect(chord_one, librosa.effects.pitch_shift, 22050, n_steps=5)
+
+        bass_pos = pos
+
+        for section in range(2):
+            if (section == 0):
+                hi_hat_pos = pos
+                self.addToMaster(self.closed_hat, hi_hat_pos + (((chord_length * 2) - 4) * self.beat))
+                hi_hat_pos += hi_hat_pos + (((chord_length * 2) - 4) * self.beat) + self.beat
+                self.addToMaster(self.closed_hat, hi_hat_pos)
+                hi_hat_pos += self.beat
+                for i in range(4):
+                    self.addToMaster(self.closed_hat, hi_hat_pos)
+                    hi_hat_pos += (self.beat / 2)
+            else:
+                trip_beat = np.random.choice(range(4))
+                quarter_beat = np.random.choice(range(4))
+                hi_hat_pos = pos
+                for i in range(math.floor(chord_length / 4)):
+                    hi_hat_pos += self.beat * trip_beat
+                    for j in range(3):
+                        self.addToMaster(self.closed_hat, hi_hat_pos)
+                        hi_hat_pos += math.floor(self.beat / 3)
+                    hi_hat_pos += self.beat * (3 - trip_beat)
+
+                    hi_hat_pos += self.beat * quarter_beat
+                    self.addToMaster(self.closed_hat, hi_hat_pos)
+                    hi_hat_pos += self.beat
+                    hi_hat_pos += self.beat * (3 - quarter_beat)
 
 
-        # fmaj7 = chord.Chord(["F3", "A3", "C4", "E4"])
-        # print(fmaj7.pitchClasses)
+            for i in range(math.floor(chord_length / 2)):
+                self.addToMaster(self.getSegmentWithEffect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice(chord_vals)), bass_pos)
+                bass_pos += len(bass_half_note)
+            for i in range(math.floor(chord_length / 2)):
+                self.addToMaster(self.getSegmentWithEffect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice([v + 5 for v in chord_vals])), bass_pos)
+                bass_pos += len(bass_half_note)
+
+            pos = self.addToMaster(chord_one, pos)
+            self.addToMaster(self.crash - 8, pos)
+            pos = self.addToMaster(chord_two, pos)
 
     def getDense(self, segment, dur):
         samples = [abs(s) for s in segment.get_array_of_samples()]
@@ -338,4 +383,4 @@ class Curve:
     def val(self, t):
         return self.amp * self.func(self.freq * t)
 
-wc = WordComp('cower')
+wc = WordComp('garlic')
