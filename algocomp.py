@@ -14,18 +14,30 @@ import math
 import random
 import os
 import uuid
+import re
 
 app_id = oxford_cred.app_id
 app_key = oxford_cred.app_key
 
 class WordComp:
-    def __init__(self, word):
+    def __init__(self, word, poem=False):
         self.word = word.lower()
         self.file_name = ""
+        self.poem = poem
 
-        self.get_word_sound_file()
-        self.generate_song()
-        self.clean_files()
+        if self.poem:
+            self.file_name = self.word
+            self.word = self.word[:-4]
+            self.get_poem_sound_files()
+            self.generate_poem_song()
+        else:
+            self.get_word_sound_file()
+            self.generate_song()
+
+        try:
+            self.clean_files()
+        except:
+            pass
 
     # --------------------------------------------------------------------------------
     # get_word_sound_file()
@@ -50,8 +62,6 @@ class WordComp:
 
             # Download file and make new directory
             if not found:
-                Path('./' + self.word).mkdir()
-
                 r = requests.get('https://od-api.oxforddictionaries.com:443/api/v1/entries/en/' + self.word,
                                  headers={'app_id': app_id, 'app_key': app_key})
                 file_array = nested_lookup('audioFile', r.json())
@@ -59,11 +69,66 @@ class WordComp:
                 self.file_name = self.word + '/' + file_url.split('/')[-1]
 
                 print("Downloading file.")
+                Path('./' + self.word).mkdir()
                 urllib.request.urlretrieve(file_url, self.file_name)
             else:
                 print("File exists")
         except:
             print("Unable to get a sound file for this word, please try a different word.")
+
+    def get_poem_sound_files(self):
+
+        # Parse poem into words
+        poem = []
+        with open(self.file_name, 'r') as poem_file:
+            poem = poem_file.read()
+            poem = re.findall(r'\b[^\W\d_]+\b', str(poem))
+            poem = [w.lower() for w in poem]
+            self.words = poem
+
+        # Get sound files for all words
+        if self.words:
+            self.poem_file_names = []
+
+            # Look for this poem directory
+            try:
+                found = False
+                this_dir = Path('.')
+                dirs = [d for d in this_dir.iterdir() if d.is_dir()]
+
+                # Look for directory
+                for d in dirs:
+                    if str(d.name) == self.word:
+                        found = True
+                        word_dir = Path(self.word)
+                        files = [f for f in word_dir.iterdir() if f.is_file()]
+
+                        for f in files:
+                            if str(f.name).split('_')[0] in self.words:
+                                self.poem_file_names.append(self.word + '/' + str(f.name))
+
+                if not found:
+                    # Make poem directory
+                    Path('./' + self.word).mkdir()
+
+                    # Download all word sound files
+                    for w in self.words:
+                        try:
+                            r = requests.get('https://od-api.oxforddictionaries.com:443/api/v1/entries/en/' + w,
+                                             headers={'app_id': app_id, 'app_key': app_key})
+                            file_array = nested_lookup('audioFile', r.json())
+                            file_url = file_array[0]
+                            self.poem_file_names.append(self.word + '/' + file_url.split('/')[-1])
+
+                            print("Downloading word: " + w)
+                            urllib.request.urlretrieve(file_url, self.poem_file_names[-1])
+                        except:
+                            print("Unable to find the word {}, continuing on.".format(w))
+                else:
+                    print("Files exist.")
+
+            except:
+                print("Unable to access file system.")
 
     # --------------------------------------------------------------------------------
     # generate_song()
@@ -80,6 +145,12 @@ class WordComp:
 
         # Create main word segment
         self.s = AudioSegment.from_file(self.word + "/trim_" + self.word + ".wav")
+        # Add minimal reverb on word sample
+        reverb = (
+            AudioEffectsChain()
+                .reverb(2)
+        )
+        self.s = self.get_segment_with_effect(self.s, reverb)
 
         # Create percussion segments
         self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_Ana_01.wav")
@@ -94,10 +165,11 @@ class WordComp:
 
         # Call the sections and transitions of the piece
         pos = 0
-        pos = self.intro(pos)
+
+        # pos = self.intro(pos)
         # pos = self.transition_morph_to_beat(pos, 4)
-        pos = self.club_beat(pos)
-        pos = self.transition_stretch(pos, 8, 4)
+        # pos = self.club_beat(pos)
+        # pos = self.transition_stretch(pos, 8, 4)
         pos = self.chordal(pos)
 
         # WARNING: adding this reverb to the master sounded nice, but removed the ability to pan
@@ -112,7 +184,59 @@ class WordComp:
         # self.master.export("draft.wav", format="wav")
 
     # --------------------------------------------------------------------------------
-    # transition_morph_to_beat()
+    # generate_poem_song()
+    #   Establishes master track, calls the various sections and transitions
+    # --------------------------------------------------------------------------------
+    def generate_poem_song(self):
+        # Establish master segment
+        self.master = AudioSegment.silent(0)
+
+        # Trim the collected word file
+        for i, s in enumerate(self.poem_file_names):
+            word = s.split('/')[1].split('_')[0]
+            y, sr = librosa.load(s, 44100)
+            y_trim, _ = librosa.effects.trim(y)
+            librosa.output.write_wav(self.word + "/trim_" + word + ".wav", y_trim, sr)
+
+        # Create first word segment
+        self.current_word_index = -1
+        self.change_main_segment(0)
+
+        # Create percussion segments
+        self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_Ana_01.wav")
+        self.open_hat = AudioSegment.from_file("perc/Open_Hat_19.wav")
+        self.snare = AudioSegment.from_file("perc/Snare_09.wav")
+        self.kick = AudioSegment.from_file("perc/Kick_016.wav")
+        self.crash = AudioSegment.from_file("perc/Crash_13b.wav")
+
+        # Set tempo (set in BPM, calculated to mspb)
+        bpm_tempo = 134
+        self.beat = math.floor(60000 / bpm_tempo)
+
+        # Call the sections and transitions of the piece
+        pos = 0
+
+        # pos = self.intro(pos)
+        # pos = self.transition_morph_to_beat(pos, 4)
+        # pos = self.club_beat(pos)
+        # pos = self.transition_stretch(pos, 8, 4)
+        # pos = self.chordal(pos)
+        # pos = self.intro2(pos)
+        pos = self.chordal2(pos)
+
+        # WARNING: adding this reverb to the master sounded nice, but removed the ability to pan
+        # reverb = (
+        #     AudioEffectsChain()
+        #         .reverb(2)
+        # )
+        # self.master = self.get_segment_with_effect(self.master, reverb)
+
+        # Play the master track
+        play(self.master + AudioSegment.silent(1000))
+        # self.master.export("draft.wav", format="wav")
+
+    # --------------------------------------------------------------------------------
+    # intro()
     #   Uses panning and repetition to get the listener acquainted with the word
     #   pos: position at which to start this section
     # --------------------------------------------------------------------------------
@@ -148,6 +272,14 @@ class WordComp:
         self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.pitch_shift, 22050, n_steps=-12), pos)
         self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.pitch_shift, 22050, n_steps=12), pos)
         pos += self.beat
+        return pos
+
+    def intro2(self, pos):
+        for i in range(len(self.words)):
+            self.change_main_segment(i)
+            self.add_to_master(self.s.fade_out(10), pos)
+            pos += len(self.s) - 200
+
         return pos
 
     # --------------------------------------------------------------------------------
@@ -262,7 +394,7 @@ class WordComp:
         # Specify the type of chord (major seventh chord)
         chord_vals = [-1, 0, 4, 7]
         # Make the first chord (reduce by 8dB as the layered voices make it loud
-        chord_one = self.make_chord(note, chord_vals) - 8
+        chord_one = self.make_chord(note, chord_vals)[0] - 8
         if(len(chord_one) < chord_length * self.beat):
             chord_one = chord_one + AudioSegment.silent((chord_length * self.beat) - len(chord_one))
         # Shift the chord a fourth up
@@ -271,9 +403,9 @@ class WordComp:
         # Transition by slowly adding three notes of the chord
         self.add_to_master(note.fade_in(10).fade_out(1000), pos)
         pos += math.floor(len(note) / 3)
-        self.add_to_master(self.make_chord(note, [-1, 0]).fade_in(10).fade_out(1000)[0:math.floor((2 * len(note)) / 3)] - 4, pos)
+        self.add_to_master(self.make_chord(note, [-1, 0])[0].fade_in(10).fade_out(1000)[0:math.floor((2 * len(note)) / 3)] - 4, pos)
         pos += math.floor(len(note) / 3)
-        self.add_to_master(self.make_chord(note, [-1, 0, 7]).fade_in(10).fade_out(1000)[0:math.floor((len(note)) / 3)] - 8, pos)
+        self.add_to_master(self.make_chord(note, [-1, 0, 7])[0].fade_in(10).fade_out(1000)[0:math.floor((len(note)) / 3)] - 8, pos)
         pos += math.floor(len(note) / 3)
 
         # Copy the position for the bass
@@ -323,6 +455,60 @@ class WordComp:
             self.add_to_master(self.crash - 8, pos)
             pos = self.add_to_master(chord_two.fade_in(200), pos)
 
+    def chordal2(self, pos):
+        for i in range(len(self.words)):
+            self.change_main_segment(i)
+            # Create voice
+            voice = self.s[math.floor(len(self.s) / 4): 2 * math.floor(len(self.s) / 4)]
+            voice = self.get_segment_with_effect(voice, librosa.effects.pitch_shift, 22050, n_steps=12)
+            voice = self.get_segment_with_effect(voice, librosa.effects.time_stretch, 0.05)
+            voice, _, _ = self.get_dense(voice, self.beat * 8)
+            voice = self.get_segment_with_effect(voice, librosa.effects.time_stretch, 2)
+            voice, _, _ = self.get_dense(voice, self.beat / 32)
+            voice = voice.fade_in(2).fade_out(2)*32*4
+            voice = self.get_segment_with_effect(voice + AudioSegment.silent(4000), (AudioEffectsChain().lowpass(4000).highpass(500).reverb(80)))
+            voice = voice[1800:3200].fade_in(40).fade_out(600)
+
+            # Create voice2
+            voice2, _, _ = self.get_dense(self.s, self.beat / 8)
+            voice2 = self.get_segment_with_effect(voice2, librosa.effects.time_stretch, 0.75)
+            voice2 = voice2[0:math.floor(self.beat / 2)]
+            voice2 = self.get_segment_with_effect(voice2, (AudioEffectsChain().lowpass(4000)))
+            voice2 = self.get_segment_with_effect(voice2 + AudioSegment.silent(math.floor(self.beat)), (AudioEffectsChain().reverb(room_scale=1, reverberance=100)))
+            voice2 = voice2.fade_in(10).fade_out(self.beat)
+            self.add_to_master(voice2, pos)
+
+            # Creating the bass voice
+            # Grab the densest eighth note of the word
+            bass, _, _ = self.get_dense(self.s, self.beat / 2)
+            # Drop it two octaves
+            bass = self.get_segment_with_effect(bass, librosa.effects.pitch_shift, 22050, n_steps=-24)
+            # Restrict frequencies to 100-1500 Hz
+            lp_fx = (
+                AudioEffectsChain()
+                    .lowpass(1500)
+                    .highpass(100)
+            )
+            bass = self.get_segment_with_effect(bass, lp_fx)
+            # Stretch it out 4x
+            bass = self.get_segment_with_effect(bass, librosa.effects.time_stretch, 0.25)
+            # Get the densest beat from this latest stretch
+            bass, _, _ = self.get_dense(bass, self.beat)
+            # Ensure it's a full beat long
+            if (len(bass) < self.beat):
+                bass = bass + AudioSegment.silent(self.beat - len(bass))
+
+            root = self.estimate_pitch(voice)
+            chord = self.make_chord(voice, [0, 3, 7])[0] - 6
+            chord2 = self.make_chord(voice, [-5, -1, 2])[0] - 6
+            bass = self.match_pitch(bass, root, 0)
+
+            # self.add_to_master(self.s, pos)
+            # self.add_to_master(chord, pos)
+            # self.add_to_master(chord2, pos + 2 * self.beat)
+            # self.add_to_master(bass + 4, pos + 2 * self.beat)
+            pos += 2 * self.beat
+
     # --------------------------------------------------------------------------------
     # get_dense()
     #   Gets the "densest" portion of an input segment, where density is the section
@@ -348,17 +534,6 @@ class WordComp:
 
         # Return the timestamp indices as well
         return segment[densest*dur:min((densest+1)*dur, len(segment))], densest*dur, (densest+1)*dur
-
-    # --------------------------------------------------------------------------------
-    # clean_files()
-    #   Deletes the temp .wav files used when adding effects
-    # --------------------------------------------------------------------------------
-    def clean_files(self):
-        word_dir = Path('./' + self.word)
-        files = [f for f in word_dir.iterdir() if f.is_file()]
-        for f in files:
-            if str(f) != self.file_name:
-                os.remove(str(f))
 
     # --------------------------------------------------------------------------------
     # get_segment_with_effect()
@@ -423,15 +598,18 @@ class WordComp:
     # --------------------------------------------------------------------------------
     def make_chord(self, segment, chord_list):
         final_chord = AudioSegment.silent(len(segment))
+        notes_of_chord = []
 
         # Estimate the pitch of the input segment for building the chord with
         #   that pitch as the root
         root = self.estimate_pitch(segment)
 
         for val in chord_list:
-            final_chord = final_chord.overlay(self.match_pitch(segment, root, val))
+            note = self.match_pitch(segment, root, val)
+            notes_of_chord.append(note)
+            final_chord = final_chord.overlay(note)
 
-        return final_chord
+        return final_chord, notes_of_chord
 
     # --------------------------------------------------------------------------------
     # match_pitch()
@@ -481,6 +659,22 @@ class WordComp:
 
         return ind
 
+    def change_main_segment(self, index):
+        if index == self.current_word_index:
+            return
+        if index < len(self.words):
+            self.s = AudioSegment.from_file(self.word + "/trim_" + self.words[index] + ".wav")
+            # Add minimal reverb on word sample
+            reverb = (
+                AudioEffectsChain()
+                    .reverb(2)
+            )
+            self.s = self.get_segment_with_effect(self.s, reverb)
+            self.current_word_index = index
+            print("Word is now '{}'".format(self.words[index]))
+        else:
+            print("Word index out of range.")
+
     # --------------------------------------------------------------------------------
     # add_to_master()
     #   Adds a given segment to the master AudioSegment at the given position,
@@ -497,6 +691,21 @@ class WordComp:
         self.master = self.master.overlay(segment, position=position)
 
         return len(segment) + position
+
+    # --------------------------------------------------------------------------------
+    # clean_files()
+    #   Deletes the temp .wav files used when adding effects
+    # --------------------------------------------------------------------------------
+    def clean_files(self):
+        word_dir = Path('./' + self.word)
+        files = [f for f in word_dir.iterdir() if f.is_file()]
+        for f in files:
+            if self.poem:
+                if str(f) not in self.poem_file_names:
+                    os.remove(str(f))
+            else:
+                if str(f) != self.file_name:
+                    os.remove(str(f))
 
 # --------------------------------------------------------------------------------
 # Curve
@@ -515,7 +724,8 @@ class Curve:
 
 # This builds and plays the song
 # Try changing the word!
-wc = WordComp('furniture')
+# wc = WordComp('change_quote.txt', poem=True)
+wc = WordComp('garlic')
 
 # ---------------- NOTES ---------------
 # s_low = self.get_segment_with_effect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
