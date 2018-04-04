@@ -458,56 +458,141 @@ class WordComp:
     def chordal2(self, pos):
         for i in range(len(self.words)):
             self.change_main_segment(i)
-            # Create voice
-            voice = self.s[math.floor(len(self.s) / 4): 2 * math.floor(len(self.s) / 4)]
-            voice = self.get_segment_with_effect(voice, librosa.effects.pitch_shift, 22050, n_steps=12)
-            voice = self.get_segment_with_effect(voice, librosa.effects.time_stretch, 0.05)
-            voice, _, _ = self.get_dense(voice, self.beat * 8)
-            voice = self.get_segment_with_effect(voice, librosa.effects.time_stretch, 2)
-            voice, _, _ = self.get_dense(voice, self.beat / 32)
-            voice = voice.fade_in(2).fade_out(2)*32*4
-            voice = self.get_segment_with_effect(voice + AudioSegment.silent(4000), (AudioEffectsChain().lowpass(4000).highpass(500).reverb(80)))
-            voice = voice[1800:3200].fade_in(40).fade_out(600)
+            # Create 3 beat sustain_voice
+            sustain_voice = self.s[math.floor(len(self.s) / 4): 2 * math.floor(len(self.s) / 4)]
+            sustain_voice = self.get_segment_with_effect(sustain_voice, librosa.effects.pitch_shift, 22050, n_steps=12)
+            sustain_voice = self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, 0.05)
+            sustain_voice, _, _ = self.get_dense(sustain_voice, self.beat * 8)
+            sustain_voice = self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, 2)
+            sustain_voice, _, _ = self.get_dense(sustain_voice, self.beat / 32)
+            sustain_voice = sustain_voice.fade_in(2).fade_out(2)*32*4
+            sustain_voice = self.get_segment_with_effect(sustain_voice + AudioSegment.silent(4000), (AudioEffectsChain().lowpass(4000).highpass(500).reverb(80)))
+            sustain_voice = sustain_voice[1800:3200].fade_in(40).fade_out(600)
+            sustain_voice = sustain_voice[0:min(len(sustain_voice), self.beat * 3)]
+            sustain_voice = sustain_voice.fade_in(10).fade_out(10)
 
-            # Create voice2
-            voice2, _, _ = self.get_dense(self.s, self.beat / 8)
-            voice2 = self.get_segment_with_effect(voice2, librosa.effects.time_stretch, 0.75)
-            voice2 = voice2[0:math.floor(self.beat / 2)]
-            voice2 = self.get_segment_with_effect(voice2, (AudioEffectsChain().lowpass(4000)))
-            voice2 = self.get_segment_with_effect(voice2 + AudioSegment.silent(math.floor(self.beat)), (AudioEffectsChain().reverb(room_scale=1, reverberance=100)))
-            voice2 = voice2.fade_in(10).fade_out(self.beat)
-            self.add_to_master(voice2, pos)
+            # Eighth note voice
+            note_voice = self.s.reverse()
+            note_voice, _, _ = self.get_dense(note_voice, self.beat)
+            note_voice = self.get_segment_with_effect(note_voice, librosa.effects.time_stretch, 0.5)
+            note_voice = self.get_segment_with_effect(note_voice, (AudioEffectsChain().lowpass(4000, q=4)))
+            note_voice, _, _ = self.get_dense(note_voice, self.beat / 4)
+            note_voice = self.get_segment_with_effect(note_voice, librosa.effects.time_stretch, 0.5)
+            note_voice = note_voice.fade_in(10).fade_out(10)
 
-            # Creating the bass voice
+            # 8 beat drone
+            drone_voice = self.s[(len(self.s)) / 4:(2 * (len(self.s))) / 4]
+            drone_voice = self.get_segment_with_effect(drone_voice, librosa.effects.time_stretch, len(drone_voice) / (4 * self.beat))
+            drone_voice, _, _ = self.get_dense(drone_voice, self.beat)
+            drone_voice = self.get_segment_with_effect(drone_voice, librosa.effects.time_stretch, len(drone_voice) / (8 * self.beat))
+            drone_voice = self.get_segment_with_effect(drone_voice, (AudioEffectsChain().lowpass(3000).phaser().overdrive(gain=5)))
+            crossfade = 500
+            drone_voice = drone_voice[math.floor(2 * self.beat) - (crossfade / 4):math.floor(6 * self.beat) + (crossfade / 4)]
+            drone_voice = drone_voice.append(drone_voice, crossfade=crossfade)
+            drone_voice = drone_voice.fade_in(10).fade_out(10)
+
+            # Creating the bass
             # Grab the densest eighth note of the word
-            bass, _, _ = self.get_dense(self.s, self.beat / 2)
+            bass_voice, _, _ = self.get_dense(self.s, self.beat / 2)
             # Drop it two octaves
-            bass = self.get_segment_with_effect(bass, librosa.effects.pitch_shift, 22050, n_steps=-24)
+            bass_voice = self.get_segment_with_effect(bass_voice, librosa.effects.pitch_shift, 22050, n_steps=-24)
             # Restrict frequencies to 100-1500 Hz
-            lp_fx = (
+            filter_fx = (
                 AudioEffectsChain()
                     .lowpass(1500)
                     .highpass(100)
             )
-            bass = self.get_segment_with_effect(bass, lp_fx)
+            bass_voice = self.get_segment_with_effect(bass_voice, filter_fx)
             # Stretch it out 4x
-            bass = self.get_segment_with_effect(bass, librosa.effects.time_stretch, 0.25)
+            bass_voice = self.get_segment_with_effect(bass_voice, librosa.effects.time_stretch, 0.25)
             # Get the densest beat from this latest stretch
-            bass, _, _ = self.get_dense(bass, self.beat)
+            bass_voice, _, _ = self.get_dense(bass_voice, self.beat)
             # Ensure it's a full beat long
-            if (len(bass) < self.beat):
-                bass = bass + AudioSegment.silent(self.beat - len(bass))
+            if (len(bass_voice) < self.beat):
+                bass_voice = bass_voice + AudioSegment.silent(self.beat - len(bass_voice))
+            bass_voice = bass_voice.fade_in(10).fade_out(10) + 4
 
-            root = self.estimate_pitch(voice)
-            chord = self.make_chord(voice, [0, 3, 7])[0] - 6
-            chord2 = self.make_chord(voice, [-5, -1, 2])[0] - 6
-            bass = self.match_pitch(bass, root, 0)
+            root = self.estimate_pitch(note_voice)
+            bass_voice = self.match_pitch(bass_voice, root, 0)
+            sustain_voice = self.match_pitch(sustain_voice, root, 0)
+            drone_voice = self.match_pitch(drone_voice, root, 0)
 
-            # self.add_to_master(self.s, pos)
-            # self.add_to_master(chord, pos)
-            # self.add_to_master(chord2, pos + 2 * self.beat)
-            # self.add_to_master(bass + 4, pos + 2 * self.beat)
-            pos += 2 * self.beat
+            pos = self.explore_word(pos, bass_voice, sustain_voice, note_voice, drone_voice)
+
+            # SOUND DEMO
+            # self.add_to_master(bass_voice * 4, pos)
+            # pos += self.beat * 4
+            # self.add_to_master((sustain_voice + AudioSegment.silent(self.beat)) * 2, pos)
+            # pos += self.beat * 8
+            # self.add_to_master(note_voice * 8, pos)
+            # pos += self.beat * 4
+            # self.add_to_master(drone_voice, pos)
+            # pos += self.beat * 8
+
+
+
+    def explore_word(self, pos, bass_voice, sustain_voice, note_voice, drone_voice):
+        chord1, chord1_notes = self.make_chord(drone_voice, [-1, 0, 4, 7])
+        chord1 = chord1 - 14
+        chord1 = chord1.fade_in(40).fade_out(20)
+        new_root = random.choice([-5, -1, 4, 7])
+        new_chord_array = [new_root - 1, new_root, new_root + 4, new_root + 7]
+        print(new_chord_array)
+        chord2, chord2_notes = self.make_chord(drone_voice, new_chord_array)
+        chord2 = chord2 - 14
+        chord2 = chord2.fade_in(40).fade_out(20)
+
+        rhythm_length = 8
+        word_rhythm = [random.choice([1, 2, 3, 4]) for _ in range(rhythm_length)]
+        rhythm_sum = sum(word_rhythm)
+
+        while rhythm_sum > rhythm_length:
+            word_rhythm = word_rhythm[0:-1]
+            rhythm_sum = sum(word_rhythm)
+
+        print(word_rhythm)
+        word_pos = 0
+        for i in range(4):
+            for b in word_rhythm:
+                self.add_to_master(self.s, pos + (word_pos * self.beat))
+                word_pos += b
+
+            if word_pos % rhythm_length != 0:
+                word_pos += (rhythm_length - (word_pos % rhythm_length))
+
+        bass_sustain_pos = rhythm_length * 2 * self.beat
+        for i in range(2):
+            self.add_to_master(bass_voice, pos + bass_sustain_pos)
+            bass_sustain_pos += 3 * self.beat
+            self.add_to_master(sustain_voice, pos + bass_sustain_pos)
+            bass_sustain_pos += self.beat
+            self.add_to_master(bass_voice, pos + bass_sustain_pos)
+            bass_sustain_pos += 4 * self.beat
+
+        drone_pos = rhythm_length * 3 * self.beat
+        self.add_to_master(drone_voice.fade_in(6 * self.beat), pos + drone_pos)
+
+        pos += rhythm_length * 4 * self.beat
+        # self.add_to_master(self.s, pos)
+        # self.add_to_master(note_voice, pos)
+
+
+        # # First chord
+        # self.add_to_master(chord1, pos)
+        # bass_line = [0, 7, 8, 7]
+        # for i in range(4):
+        #     self.add_to_master(self.get_segment_with_effect(bass_voice, librosa.effects.pitch_shift, 22050, n_steps=bass_line[i]), pos + (i * 2 * self.beat))
+        # pos += 8 * self.beat
+        #
+        # # Second chord
+        # bass_line = [sum(x) for x in zip(bass_line, new_chord_array)]
+        # print(bass_line)
+        # self.add_to_master(chord2, pos)
+        # for i in range(4):
+        #     self.add_to_master(self.get_segment_with_effect(bass_voice, librosa.effects.pitch_shift, 22050, n_steps=bass_line[i]), pos + (i * 2 * self.beat))
+        # pos += 8 * self.beat
+
+        return pos
 
     # --------------------------------------------------------------------------------
     # get_dense()
@@ -724,8 +809,8 @@ class Curve:
 
 # This builds and plays the song
 # Try changing the word!
-# wc = WordComp('change_quote.txt', poem=True)
-wc = WordComp('garlic')
+wc = WordComp('change_quote.txt', poem=True)
+# wc = WordComp('garlic')
 
 # ---------------- NOTES ---------------
 # s_low = self.get_segment_with_effect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
