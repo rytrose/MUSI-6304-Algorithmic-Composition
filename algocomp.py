@@ -532,49 +532,65 @@ class WordComp:
 
 
     def explore_word(self, pos, bass_voice, sustain_voice, note_voice, drone_voice):
-        chord1, chord1_notes = self.make_chord(drone_voice, [-1, 0, 4, 7])
-        chord1 = chord1 - 14
+        # chord1, chord1_notes = self.make_chord(drone_voice, [-1, 0, 4, 7])
+        # chord1 = chord1 - 14
+        # chord1 = chord1.fade_in(40).fade_out(20)
+        # new_root = random.choice([-5, -1, 4, 7])
+        # new_chord_array = [new_root - 1, new_root, new_root + 4, new_root + 7]
+        # chord2, chord2_notes = self.make_chord(drone_voice, new_chord_array)
+        # chord2 = chord2 - 14
+        # chord2 = chord2.fade_in(40).fade_out(20)
+        #
+        # rhythm_length = 8
+        # word_rhythm = [random.choice([1, 2, 3, 4]) for _ in range(rhythm_length)]
+        # rhythm_sum = sum(word_rhythm)
+        #
+        # while rhythm_sum > rhythm_length:
+        #     word_rhythm = word_rhythm[0:-1]
+        #     rhythm_sum = sum(word_rhythm)
+        #
+        # print(word_rhythm)
+        # word_pos = 0
+        # for i in range(4):
+        #     for ind, b in enumerate(word_rhythm):
+        #         self.add_to_master(pan(self.s, (((2 * ind)/(len(word_rhythm) - 1)) * 0.8 - 0.8)), pos + (word_pos * self.beat))
+        #         word_pos += b
+        #
+        #     if word_pos % rhythm_length != 0:
+        #         word_pos += (rhythm_length - (word_pos % rhythm_length))
+        #
+        # bass_pos = rhythm_length * 2 * self.beat
+        # for i in range(2):
+        #     self.add_to_master(bass_voice, pos + bass_pos)
+        #     bass_pos += 4 * self.beat
+        # for i in range(4):
+        #     self.add_to_master(bass_voice, pos + bass_pos)
+        #     bass_pos += 2* self.beat
+        #
+        # drone_pos = rhythm_length * 3 * self.beat
+        # self.add_to_master(drone_voice.fade_in(7 * self.beat), pos + drone_pos)
+        #
+        # note_pos = rhythm_length * self.beat
+        # note_line = AudioSegment.silent(0)
+        # for i in range(rhythm_length * 2):
+        #     note_line += note_voice + self.get_segment_with_effect(note_voice, librosa.effects.pitch_shift, 22050, n_steps=2) + self.get_segment_with_effect(note_voice, librosa.effects.pitch_shift, 22050, n_steps=random.choice([3, 5, 7, 9]))
+        # note_line = note_line - 16
+        #
+        # self.add_to_master(note_line.fade_in(rhythm_length * 2 * self.beat), pos + note_pos)
+        #
+        # pos += rhythm_length * 4 * self.beat
+
+
+        chord1, chord1_notes = self.make_chord(self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, 0.5), [-1, 0, 4, 7])
+        chord1 = chord1 - 8
         chord1 = chord1.fade_in(40).fade_out(20)
         new_root = random.choice([-5, -1, 4, 7])
         new_chord_array = [new_root - 1, new_root, new_root + 4, new_root + 7]
-        print(new_chord_array)
-        chord2, chord2_notes = self.make_chord(drone_voice, new_chord_array)
-        chord2 = chord2 - 14
+        chord2, chord2_notes = self.make_chord(self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, 0.5), new_chord_array)
+        chord2 = chord2 - 8
         chord2 = chord2.fade_in(40).fade_out(20)
 
-        rhythm_length = 8
-        word_rhythm = [random.choice([1, 2, 3, 4]) for _ in range(rhythm_length)]
-        rhythm_sum = sum(word_rhythm)
-
-        while rhythm_sum > rhythm_length:
-            word_rhythm = word_rhythm[0:-1]
-            rhythm_sum = sum(word_rhythm)
-
-        print(word_rhythm)
-        word_pos = 0
-        for i in range(4):
-            for b in word_rhythm:
-                self.add_to_master(self.s, pos + (word_pos * self.beat))
-                word_pos += b
-
-            if word_pos % rhythm_length != 0:
-                word_pos += (rhythm_length - (word_pos % rhythm_length))
-
-        bass_sustain_pos = rhythm_length * 2 * self.beat
-        for i in range(2):
-            self.add_to_master(bass_voice, pos + bass_sustain_pos)
-            bass_sustain_pos += 3 * self.beat
-            self.add_to_master(sustain_voice, pos + bass_sustain_pos)
-            bass_sustain_pos += self.beat
-            self.add_to_master(bass_voice, pos + bass_sustain_pos)
-            bass_sustain_pos += 4 * self.beat
-
-        drone_pos = rhythm_length * 3 * self.beat
-        self.add_to_master(drone_voice.fade_in(6 * self.beat), pos + drone_pos)
-
-        pos += rhythm_length * 4 * self.beat
-        # self.add_to_master(self.s, pos)
-        # self.add_to_master(note_voice, pos)
+        pos = self.add_to_master(chord1 + chord2, pos)
 
 
         # # First chord
