@@ -159,24 +159,31 @@ class WordComp:
         bpm_tempo = 134
         self.beat = math.floor(60000 / bpm_tempo)
 
+        # Generate the voices used throughout
+        self.generate_voices(None)
+
         # Call the sections and transitions of the piece
         pos = 0
 
+        # Play intro
         pos = self.intro_poem(pos)
-        pos = self.generate_voices(pos)
+
+        # Play word exploration sections
         for i in range(len(self.words)):
             self.change_main_segment(i)
             pos = self.explore_word(pos)
 
+        # Play the main sections of the piece
         pos = self.beef_1(pos)
         pos = self.beef_2(pos)
         pos = self.beef_3(pos)
 
+        # Play the outro
         pos = self.outro(pos)
 
         # Play the master track
         # play(self.master + AudioSegment.silent(1000))
-        self.master.export("testing!.wav", format="wav")
+        self.master.export("change.wav", format="wav")
 
     # --------------------------------------------------------------------------------
     # intro_poem()
@@ -255,6 +262,7 @@ class WordComp:
                 bass_voice = bass_voice + AudioSegment.silent(self.beat - len(bass_voice))
             bass_voice = bass_voice.fade_in(10).fade_out(10) + 4
 
+            # Pitch all the voices to the note, which has the cleanest defined
             root = self.estimate_pitch(note_voice)
             bass_voice = self.match_pitch(bass_voice, root, 0)
             sustain_voice = self.match_pitch(sustain_voice, root, 0)
@@ -289,6 +297,11 @@ class WordComp:
         # pos = self.explore_word_section_2(pos, word_rhythm, bass_voice, sustain_voice, note_voice, drone_voice)
         return pos
 
+    # --------------------------------------------------------------------------------
+    # explore_word_section_1()
+    #   Establishes a rhythmic pattern for the word, and demonstrates the derived voices
+    #   pos: position at which to start this section
+    # --------------------------------------------------------------------------------
     def explore_word_section_1(self, pos):
         bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
 
@@ -356,6 +369,11 @@ class WordComp:
     #
     #     return pos
 
+    # --------------------------------------------------------------------------------
+    # beef_1()
+    #   Establishes the main melody, via the sustain voice
+    #   pos: position at which to start this section
+    # --------------------------------------------------------------------------------
     def beef_1(self, pos):
         word_pos = pos
         for i in range(4):
@@ -386,6 +404,11 @@ class WordComp:
 
         return pos
 
+    # --------------------------------------------------------------------------------
+    # beef_2()
+    #   Uses the sustain melody, bass, and stuttering words
+    #   pos: position at which to start this section
+    # --------------------------------------------------------------------------------
     def beef_2(self, pos):
         note_line = AudioSegment.silent(0)
         for i in range(len(self.words)):
@@ -438,6 +461,11 @@ class WordComp:
         pos = self.add_to_master(note_line * num_note_line, pos)
         return pos
 
+    # --------------------------------------------------------------------------------
+    # beef_3()
+    #   Stretches out the words as texture, uses sustain and bass rhythmically
+    #   pos: position at which to start this section
+    # --------------------------------------------------------------------------------
     def beef_3(self, pos):
         pitches = []
         words = []
@@ -479,6 +507,11 @@ class WordComp:
 
         return pos
 
+    # --------------------------------------------------------------------------------
+    # outro()
+    #   Draws back the texture and restates each word, finishes with the intro
+    #   pos: position at which to start this section
+    # --------------------------------------------------------------------------------
     def outro(self, pos):
         for i in range(len(self.words)):
             self.change_main_segment(i)
@@ -499,6 +532,10 @@ class WordComp:
 
         return pos
 
+    # --------------------------------------------------------------------------------
+    # get_current_voices()
+    #   Returns the proper voices for the currently operating word
+    # --------------------------------------------------------------------------------
     def get_current_voices(self):
         voices = self.voices[self.current_word_index]
         return voices["bass_voice"], voices["sustain_voice"], voices["note_voice"], voices["drone_voice"]
@@ -775,6 +812,11 @@ class WordComp:
     #         pos = self.add_to_master(chord_two.fade_in(200), pos)
 
 
+    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    #
+    # MY API FUNCTIONS
+    #
+    #  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
     # --------------------------------------------------------------------------------
@@ -927,6 +969,11 @@ class WordComp:
 
         return ind
 
+    # --------------------------------------------------------------------------------
+    # change_main_segment()
+    #   Changes the file in self.s to be the desired from the poem
+    #   index: the index of the word in the poem to be changed to
+    # --------------------------------------------------------------------------------
     def change_main_segment(self, index):
         if index == self.current_word_index:
             return
@@ -945,6 +992,11 @@ class WordComp:
         else:
             print("Word index out of range.")
 
+    # --------------------------------------------------------------------------------
+    # change_voices()
+    #   Helper to change the voices to the current word
+    #   index: the index of the word in the poem to be changed to
+    # --------------------------------------------------------------------------------
     def change_voices(self, index):
         self.current_word_index = index
         self.current_voices = self.voices[index]
@@ -1000,41 +1052,3 @@ class Curve:
 # Try changing the word!
 wc = WordComp('change_quote.txt', poem=True)
 # wc = WordComp('garlic')
-
-# ---------------- NOTES ---------------
-# s_low = self.get_segment_with_effect(s, librosa.effects.pitch_shift, 22050, n_steps=-12)
-# s_slow = self.get_segment_with_effect(s, librosa.effects.time_stretch, 0.2)
-# delay = (AudioEffectsChain().delay())
-# s_delay = self.get_segment_with_effect(s, delay)
-# fx = (
-#     AudioEffectsChain()
-#         .pitch(-2400)
-#         .reverb(room_scale=100)
-# )
-# s_fx = self.get_segment_with_effect(s + AudioSegment.silent(1000), fx)
-# s_dense, i1, i2 = self.get_dense(s, 50)
-# self.add_to_master(s_dense * 90, 0)
-# s_third = self.get_segment_with_effect(s_dense, (AudioEffectsChain().pitch(400)))
-# self.add_to_master(s_third * 60, len(s_dense) * 30)
-# s_fifth = self.get_segment_with_effect(s_dense, (AudioEffectsChain().pitch(700)))
-# self.add_to_master(s_fifth * 30, len(s_dense) * 60)
-# self.add_to_master(s_low, len(s))
-# self.add_to_master(s_slow, len(s) + len(s_low))
-# self.add_to_master(s_delay, len(s) + len(s_low) + len(s_slow))
-
-# s = AudioSegment.from_file("newsheadlines.mp3")
-# fx = lambda t: (
-#     AudioEffectsChain()
-#         .lowpass(800 * Curve(math.sin).val(t))
-# )
-
-# s_fx = self.get_segment_with_effect_over_time(s, fx)
-# s_fx = self.get_segment_with_effect(s, fx)
-# self.add_to_master(s_fx, 0)
-
-# fx = lambda t: (
-#     AudioEffectsChain()
-#         .overdrive(Curve(math.sin, 0.5).val(t))
-# )
-#
-# self.master = self.get_segment_with_effect_over_time(self.master, fx)
