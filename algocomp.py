@@ -28,6 +28,8 @@ class WordComp:
         if self.poem:
             self.file_name = self.word
             self.word = self.word[:-4]
+            self.voices = []
+            self.current_voices = {}
             self.get_poem_sound_files()
             self.generate_poem_song()
         else:
@@ -76,6 +78,10 @@ class WordComp:
         except:
             print("Unable to get a sound file for this word, please try a different word.")
 
+    # --------------------------------------------------------------------------------
+    # get_poem_sound_files()
+    #   Retrieves the pronunciation files for the given words if not already downloaded
+    # --------------------------------------------------------------------------------
     def get_poem_sound_files(self):
 
         # Parse poem into words
@@ -131,59 +137,6 @@ class WordComp:
                 print("Unable to access file system.")
 
     # --------------------------------------------------------------------------------
-    # generate_song()
-    #   Establishes master track, calls the various sections and transitions
-    # --------------------------------------------------------------------------------
-    def generate_song(self):
-        # Establish master segment
-        self.master = AudioSegment.silent(0)
-
-        # Trim the collected word file
-        y, sr = librosa.load(self.file_name, 44100)
-        y_trim, _ = librosa.effects.trim(y)
-        librosa.output.write_wav(self.word + "/trim_" + self.word + ".wav", y_trim, sr)
-
-        # Create main word segment
-        self.s = AudioSegment.from_file(self.word + "/trim_" + self.word + ".wav")
-        # Add minimal reverb on word sample
-        reverb = (
-            AudioEffectsChain()
-                .reverb(2)
-        )
-        self.s = self.get_segment_with_effect(self.s, reverb)
-
-        # Create percussion segments
-        self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_Ana_01.wav")
-        self.open_hat = AudioSegment.from_file("perc/Open_Hat_19.wav")
-        self.snare = AudioSegment.from_file("perc/Snare_09.wav")
-        self.kick = AudioSegment.from_file("perc/Kick_016.wav")
-        self.crash = AudioSegment.from_file("perc/Crash_13b.wav")
-
-        # Set tempo (set in BPM, calculated to mspb)
-        bpm_tempo = 134
-        self.beat = math.floor(60000 / bpm_tempo)
-
-        # Call the sections and transitions of the piece
-        pos = 0
-
-        # pos = self.intro(pos)
-        # pos = self.transition_morph_to_beat(pos, 4)
-        # pos = self.club_beat(pos)
-        # pos = self.transition_stretch(pos, 8, 4)
-        pos = self.chordal(pos)
-
-        # WARNING: adding this reverb to the master sounded nice, but removed the ability to pan
-        # reverb = (
-        #     AudioEffectsChain()
-        #         .reverb(2)
-        # )
-        # self.master = self.get_segment_with_effect(self.master, reverb)
-
-        # Play the master track
-        play(self.master + AudioSegment.silent(1000))
-        # self.master.export("draft.wav", format="wav")
-
-    # --------------------------------------------------------------------------------
     # generate_poem_song()
     #   Establishes master track, calls the various sections and transitions
     # --------------------------------------------------------------------------------
@@ -202,13 +155,6 @@ class WordComp:
         self.current_word_index = -1
         self.change_main_segment(0)
 
-        # Create percussion segments
-        self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_Ana_01.wav")
-        self.open_hat = AudioSegment.from_file("perc/Open_Hat_19.wav")
-        self.snare = AudioSegment.from_file("perc/Snare_09.wav")
-        self.kick = AudioSegment.from_file("perc/Kick_016.wav")
-        self.crash = AudioSegment.from_file("perc/Crash_13b.wav")
-
         # Set tempo (set in BPM, calculated to mspb)
         bpm_tempo = 134
         self.beat = math.floor(60000 / bpm_tempo)
@@ -216,65 +162,28 @@ class WordComp:
         # Call the sections and transitions of the piece
         pos = 0
 
-        # pos = self.intro(pos)
-        # pos = self.transition_morph_to_beat(pos, 4)
-        # pos = self.club_beat(pos)
-        # pos = self.transition_stretch(pos, 8, 4)
-        # pos = self.chordal(pos)
-        # pos = self.intro2(pos)
-        pos = self.chordal2(pos)
+        pos = self.intro_poem(pos)
+        pos = self.generate_voices(pos)
+        for i in range(len(self.words)):
+            self.change_main_segment(i)
+            pos = self.explore_word(pos)
 
-        # WARNING: adding this reverb to the master sounded nice, but removed the ability to pan
-        # reverb = (
-        #     AudioEffectsChain()
-        #         .reverb(2)
-        # )
-        # self.master = self.get_segment_with_effect(self.master, reverb)
+        pos = self.beef_1(pos)
+        pos = self.beef_2(pos)
+        pos = self.beef_3(pos)
+
+        pos = self.outro(pos)
 
         # Play the master track
-        play(self.master + AudioSegment.silent(1000))
-        # self.master.export("draft.wav", format="wav")
+        # play(self.master + AudioSegment.silent(1000))
+        self.master.export("testing!.wav", format="wav")
 
     # --------------------------------------------------------------------------------
-    # intro()
-    #   Uses panning and repetition to get the listener acquainted with the word
+    # intro_poem()
+    #   Plays all words of the poem in succession
     #   pos: position at which to start this section
     # --------------------------------------------------------------------------------
-    def intro(self, pos):
-        # Play the word normally twice
-        self.add_to_master(self.s, pos)
-        pos += 4 * self.beat
-        self.add_to_master(self.s, pos)
-        pos += 4 * self.beat
-
-        # Speed up and pan
-        for i in range(2):
-            self.add_to_master(apply_gain_stereo(self.s, left_gain=1.0, right_gain=-3 * i), pos)
-            pos += 1 * self.beat
-            self.add_to_master(apply_gain_stereo(self.s, left_gain=-3 * i, right_gain=1.0), pos)
-            pos += 1 * self.beat
-        for i in range(2):
-            self.add_to_master(apply_gain_stereo(self.s, left_gain=1.0, right_gain=-6 - (3 * i)), pos)
-            pos += 0.5 * self.beat
-            self.add_to_master(apply_gain_stereo(self.s, left_gain=-6 - (3 * i), right_gain=1.0), pos)
-            pos += 0.5 * self.beat
-
-        for i in range(8):
-            for i in range(2):
-                self.add_to_master(apply_gain_stereo(self.s, left_gain=-10, right_gain=-18), pos)
-                pos += 0.065 * self.beat
-                self.add_to_master(apply_gain_stereo(self.s, left_gain=-18, right_gain=-10), pos)
-                pos += 0.065 * self.beat
-
-        # Play the word in three octaves
-        pos += 3 * self.beat
-        self.add_to_master(self.s, pos)
-        self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.pitch_shift, 22050, n_steps=-12), pos)
-        self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.pitch_shift, 22050, n_steps=12), pos)
-        pos += self.beat
-        return pos
-
-    def intro2(self, pos):
+    def intro_poem(self, pos):
         for i in range(len(self.words)):
             self.change_main_segment(i)
             self.add_to_master(self.s.fade_out(10), pos)
@@ -283,179 +192,12 @@ class WordComp:
         return pos
 
     # --------------------------------------------------------------------------------
-    # transition_morph_to_beat()
-    #   Transitions from the pronunciation to beat-wise split of the word
-    #   pos: position at which to start this section
-    #   iterations: how many times to separate the syllables of the word before each
-    #       syllable is on a beat
-    # --------------------------------------------------------------------------------
-    def transition_morph_to_beat(self, pos, iterations):
-        # Split the track in 4, even though we only use the first 3 chunks, as the last is often silent
-        slice_len = len(self.s) / 4
-
-        i = slice_len
-
-        # Gradually spread apart the playback of the chunks
-        while i < self.beat:
-            for j in range(3):
-                pos = self.add_to_master(self.s[j * len(self.s) / 4:(j + 1) * (len(self.s) / 4)], pos + (i - slice_len))
-            pos = self.add_to_master(AudioSegment.silent(slice_len), pos + (i - slice_len))
-
-            i += (self.beat - slice_len) / iterations
-
-        return pos
-
-    # --------------------------------------------------------------------------------
-    # transition_stretch()
-    #   Transitions by stretching the word out
-    #   pos: position at which to start this section
-    #   iterations: how many times to say the word
-    #   length: how many beats long the last iteration should be
-    # --------------------------------------------------------------------------------
-    def transition_stretch(self, pos, iterations, length):
-        # Time stretch relative to the desired end length and the number of times to play the sound
-        for i in range(iterations):
-            pos = self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.time_stretch, len(self.s) / ((length / (iterations - i)) * len(self.s))), pos)
-
-        return pos
-
-    # --------------------------------------------------------------------------------
-    # club_beat()
-    #   Section with a driving kick drum and randomly pitched and repeated words
+    # generate_voices()
+    #   Generates three types of voices (sustain, bass, drone, note) from each of the
+    #       words of the poem
     #   pos: position at which to start this section
     # --------------------------------------------------------------------------------
-    def club_beat(self, pos):
-        # Play for 32 beats
-        for i in range(32):
-            # Kick on every beat
-            self.add_to_master(self.kick, pos)
-            # Between 0 and 3 repetitions of the word chunk per beat
-            num_beats = random.randrange(0, 4, 1)
-
-            # Choose either the first or second chunk out of fourths of the word
-            ind = random.randrange(0, 2, 1)
-            note = self.s[ind * len(self.s) / 4:(ind + 1) * (len(self.s) / 4)]
-            # Play the chunk num_beats times, at a random pitch between two octaves
-            for j in range(num_beats):
-                self.add_to_master(self.get_segment_with_effect(note, librosa.effects.pitch_shift, 22050, n_steps=random.randrange(-12, 12, 1)), pos + (j * math.floor(self.beat / num_beats)))
-
-            pos += self.beat
-        return pos
-
-    # --------------------------------------------------------------------------------
-    # chordal()
-    #   Section that uses chords built from portions of the word stretched as well as
-    #       a walking bass line derived from the word set in the chord notes
-    #   pos: position at which to start this section
-    # --------------------------------------------------------------------------------
-    def chordal(self, pos):
-        # Creating the bass voice
-        # Grab the densest eighth note of the word
-        bass, _, _ = self.get_dense(self.s, self.beat / 2)
-        # Drop it two octaves
-        bass = self.get_segment_with_effect(bass, librosa.effects.pitch_shift, 22050, n_steps=-24)
-        # Restrict frequencies to 100-1500 Hz
-        lp_fx = (
-            AudioEffectsChain()
-                .lowpass(1500)
-                .highpass(100)
-        )
-        bass = self.get_segment_with_effect(bass, lp_fx)
-        # Stretch it out 4x
-        bass = self.get_segment_with_effect(bass, librosa.effects.time_stretch, 0.25)
-        # Get the densest beat from this latest stretch
-        bass, _, _ = self.get_dense(bass, self.beat)
-        # Ensure it's a full beat long
-        if(len(bass) < self.beat):
-            bass = bass + AudioSegment.silent(self.beat - len(bass))
-        # Pitch detect the bass
-        root = self.estimate_pitch(bass)
-        # Create a 2-beat bass sample
-        bass_half_note = self.get_segment_with_effect(bass, librosa.effects.time_stretch, 0.5)
-        bass_half_note = bass_half_note[0:min(self.beat * 2, len(bass_half_note))]
-        if (len(bass_half_note) < (2 * self.beat)):
-            bass_half_note = bass_half_note + AudioSegment.silent(2 * self.beat - len(bass))
-
-        # Creating the chord voice
-        # Take the first fourth of the word file
-        note = self.s[0:(1 * (len(self.s))) / 4]
-        # Repitch it to the bass
-        note = self.match_pitch(note, root, 0)
-        # Stretch the note over four beats
-        note = self.get_segment_with_effect(note, librosa.effects.time_stretch, len(note) / (4 * self.beat))
-        # Get the densest beat from this stretch
-        note, _, _ = self.get_dense(note, self.beat)
-
-        # Stretch the note to the chord length
-        chord_length = 16
-        note = self.get_segment_with_effect(note, librosa.effects.time_stretch, len(note) / (chord_length * self.beat))
-        note = note[0:min(chord_length*self.beat, chord_length*(len(note) - 1))]
-
-        # Specify the type of chord (major seventh chord)
-        chord_vals = [-1, 0, 4, 7]
-        # Make the first chord (reduce by 8dB as the layered voices make it loud
-        chord_one = self.make_chord(note, chord_vals)[0] - 8
-        if(len(chord_one) < chord_length * self.beat):
-            chord_one = chord_one + AudioSegment.silent((chord_length * self.beat) - len(chord_one))
-        # Shift the chord a fourth up
-        chord_two = self.get_segment_with_effect(chord_one, librosa.effects.pitch_shift, 22050, n_steps=5)
-
-        # Transition by slowly adding three notes of the chord
-        self.add_to_master(note.fade_in(10).fade_out(1000), pos)
-        pos += math.floor(len(note) / 3)
-        self.add_to_master(self.make_chord(note, [-1, 0])[0].fade_in(10).fade_out(1000)[0:math.floor((2 * len(note)) / 3)] - 4, pos)
-        pos += math.floor(len(note) / 3)
-        self.add_to_master(self.make_chord(note, [-1, 0, 7])[0].fade_in(10).fade_out(1000)[0:math.floor((len(note)) / 3)] - 8, pos)
-        pos += math.floor(len(note) / 3)
-
-        # Copy the position for the bass
-        bass_pos = pos
-
-        for section in range(2):
-            # On the first pass, hi-hat pickup bar
-            if (section == 0):
-                hi_hat_pos = pos + (((chord_length * 2) - 4) * self.beat)
-                self.add_to_master(self.closed_hat, hi_hat_pos)
-                hi_hat_pos += self.beat
-                self.add_to_master(self.closed_hat, hi_hat_pos)
-                hi_hat_pos += self.beat
-                for i in range(2):
-                    self.add_to_master(self.closed_hat, hi_hat_pos)
-                    hi_hat_pos += (self.beat / 2)
-                for i in range(3):
-                    self.add_to_master(self.closed_hat, hi_hat_pos)
-                    hi_hat_pos += (self.beat / 3)
-            # Hi-hat line with randomly placed triplet and quarter note bars
-            else:
-                trip_beat = np.random.choice(range(4))
-                quarter_beat = np.random.choice(range(4))
-                hi_hat_pos = pos
-                for i in range(math.floor(chord_length / 4)):
-                    hi_hat_pos += self.beat * trip_beat
-                    for j in range(3):
-                        self.add_to_master(self.closed_hat, hi_hat_pos)
-                        hi_hat_pos += math.floor(self.beat / 3)
-                    hi_hat_pos += self.beat * (3 - trip_beat)
-
-                    hi_hat_pos += self.beat * quarter_beat
-                    self.add_to_master(self.closed_hat, hi_hat_pos)
-                    hi_hat_pos += self.beat
-                    hi_hat_pos += self.beat * (3 - quarter_beat)
-
-            # Walk the bass in half notes within the chord context
-            for i in range(math.floor(chord_length / 2)):
-                self.add_to_master(self.get_segment_with_effect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice(chord_vals)).fade_in(10), bass_pos)
-                bass_pos += len(bass_half_note)
-            for i in range(math.floor(chord_length / 2)):
-                self.add_to_master(self.get_segment_with_effect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice([v + 5 for v in chord_vals])).fade_in(10), bass_pos)
-                bass_pos += len(bass_half_note)
-
-            # Add the chords
-            pos = self.add_to_master(chord_one.fade_in(200), pos)
-            self.add_to_master(self.crash - 8, pos)
-            pos = self.add_to_master(chord_two.fade_in(200), pos)
-
-    def chordal2(self, pos):
+    def generate_voices(self, pos):
         for i in range(len(self.words)):
             self.change_main_segment(i)
             # Create 3 beat sustain_voice
@@ -479,6 +221,7 @@ class WordComp:
             note_voice, _, _ = self.get_dense(note_voice, self.beat / 4)
             note_voice = self.get_segment_with_effect(note_voice, librosa.effects.time_stretch, 0.5)
             note_voice = note_voice.fade_in(10).fade_out(10)
+            note_voice = self.match_pitch(note_voice, self.estimate_pitch(self.s), 0)
 
             # 8 beat drone
             drone_voice = self.s[(len(self.s)) / 4:(2 * (len(self.s))) / 4]
@@ -517,7 +260,12 @@ class WordComp:
             sustain_voice = self.match_pitch(sustain_voice, root, 0)
             drone_voice = self.match_pitch(drone_voice, root, 0)
 
-            pos = self.explore_word(pos, bass_voice, sustain_voice, note_voice, drone_voice)
+            self.voices.append({
+                "note_voice": note_voice,
+                "bass_voice": bass_voice,
+                "sustain_voice": sustain_voice,
+                "drone_voice": drone_voice
+            })
 
             # SOUND DEMO
             # self.add_to_master(bass_voice * 4, pos)
@@ -529,86 +277,505 @@ class WordComp:
             # self.add_to_master(drone_voice, pos)
             # pos += self.beat * 8
 
+        return pos
 
+    # --------------------------------------------------------------------------------
+    # explore_word()
+    #   Uses panning and features some of the voices generated from this word.
+    #   pos: position at which to start this section
+    # --------------------------------------------------------------------------------
+    def explore_word(self, pos):
+        pos, word_rhythm = self.explore_word_section_1(pos)
+        # pos = self.explore_word_section_2(pos, word_rhythm, bass_voice, sustain_voice, note_voice, drone_voice)
+        return pos
 
-    def explore_word(self, pos, bass_voice, sustain_voice, note_voice, drone_voice):
-        # chord1, chord1_notes = self.make_chord(drone_voice, [-1, 0, 4, 7])
-        # chord1 = chord1 - 14
-        # chord1 = chord1.fade_in(40).fade_out(20)
-        # new_root = random.choice([-5, -1, 4, 7])
-        # new_chord_array = [new_root - 1, new_root, new_root + 4, new_root + 7]
-        # chord2, chord2_notes = self.make_chord(drone_voice, new_chord_array)
-        # chord2 = chord2 - 14
-        # chord2 = chord2.fade_in(40).fade_out(20)
-        #
-        # rhythm_length = 8
-        # word_rhythm = [random.choice([1, 2, 3, 4]) for _ in range(rhythm_length)]
-        # rhythm_sum = sum(word_rhythm)
-        #
-        # while rhythm_sum > rhythm_length:
-        #     word_rhythm = word_rhythm[0:-1]
-        #     rhythm_sum = sum(word_rhythm)
-        #
-        # print(word_rhythm)
-        # word_pos = 0
-        # for i in range(4):
-        #     for ind, b in enumerate(word_rhythm):
-        #         self.add_to_master(pan(self.s, (((2 * ind)/(len(word_rhythm) - 1)) * 0.8 - 0.8)), pos + (word_pos * self.beat))
-        #         word_pos += b
-        #
-        #     if word_pos % rhythm_length != 0:
-        #         word_pos += (rhythm_length - (word_pos % rhythm_length))
-        #
-        # bass_pos = rhythm_length * 2 * self.beat
-        # for i in range(2):
-        #     self.add_to_master(bass_voice, pos + bass_pos)
-        #     bass_pos += 4 * self.beat
-        # for i in range(4):
-        #     self.add_to_master(bass_voice, pos + bass_pos)
-        #     bass_pos += 2* self.beat
-        #
-        # drone_pos = rhythm_length * 3 * self.beat
-        # self.add_to_master(drone_voice.fade_in(7 * self.beat), pos + drone_pos)
-        #
-        # note_pos = rhythm_length * self.beat
-        # note_line = AudioSegment.silent(0)
-        # for i in range(rhythm_length * 2):
-        #     note_line += note_voice + self.get_segment_with_effect(note_voice, librosa.effects.pitch_shift, 22050, n_steps=2) + self.get_segment_with_effect(note_voice, librosa.effects.pitch_shift, 22050, n_steps=random.choice([3, 5, 7, 9]))
-        # note_line = note_line - 16
-        #
-        # self.add_to_master(note_line.fade_in(rhythm_length * 2 * self.beat), pos + note_pos)
-        #
-        # pos += rhythm_length * 4 * self.beat
+    def explore_word_section_1(self, pos):
+        bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
 
+        rhythm_length = 8
+        word_rhythm = [random.choice([1, 2, 3, 4]) for _ in range(rhythm_length)]
+        rhythm_sum = sum(word_rhythm)
 
-        chord1, chord1_notes = self.make_chord(self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, 0.5), [-1, 0, 4, 7])
-        chord1 = chord1 - 8
-        chord1 = chord1.fade_in(40).fade_out(20)
-        new_root = random.choice([-5, -1, 4, 7])
-        new_chord_array = [new_root - 1, new_root, new_root + 4, new_root + 7]
-        chord2, chord2_notes = self.make_chord(self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, 0.5), new_chord_array)
-        chord2 = chord2 - 8
-        chord2 = chord2.fade_in(40).fade_out(20)
+        while rhythm_sum > rhythm_length:
+            word_rhythm = word_rhythm[0:-1]
+            rhythm_sum = sum(word_rhythm)
 
-        pos = self.add_to_master(chord1 + chord2, pos)
+        word_pos = 0
+        for i in range(3):
+            for ind, b in enumerate(word_rhythm):
+                self.add_to_master(pan(self.s, (((2 * ind) / (len(word_rhythm) - 1)) * 0.8 - 0.8)), pos + (word_pos * self.beat))
+                word_pos += b
 
+            if word_pos % rhythm_length != 0:
+                word_pos += (rhythm_length - (word_pos % rhythm_length))
 
-        # # First chord
-        # self.add_to_master(chord1, pos)
-        # bass_line = [0, 7, 8, 7]
-        # for i in range(4):
-        #     self.add_to_master(self.get_segment_with_effect(bass_voice, librosa.effects.pitch_shift, 22050, n_steps=bass_line[i]), pos + (i * 2 * self.beat))
-        # pos += 8 * self.beat
-        #
-        # # Second chord
-        # bass_line = [sum(x) for x in zip(bass_line, new_chord_array)]
-        # print(bass_line)
-        # self.add_to_master(chord2, pos)
-        # for i in range(4):
-        #     self.add_to_master(self.get_segment_with_effect(bass_voice, librosa.effects.pitch_shift, 22050, n_steps=bass_line[i]), pos + (i * 2 * self.beat))
-        # pos += 8 * self.beat
+        bass_pos = rhythm_length * self.beat
+        for i in range(2):
+            self.add_to_master(bass_voice, pos + bass_pos)
+            bass_pos += 4 * self.beat
+        for i in range(4):
+            self.add_to_master(bass_voice, pos + bass_pos)
+            bass_pos += 2 * self.beat
+
+        drone_pos = rhythm_length * 2 * self.beat
+        self.add_to_master(drone_voice.fade_in(7 * self.beat), pos + drone_pos)
+
+        note_pos = 0
+        note_line = AudioSegment.silent(0)
+        for i in range(rhythm_length * 2):
+            note_line += note_voice + self.get_segment_with_effect(note_voice, librosa.effects.pitch_shift, 22050, n_steps=2) + \
+                         self.get_segment_with_effect(note_voice, librosa.effects.pitch_shift, 22050, n_steps=random.choice([4, 5, 7, 9]))
+        note_line = note_line - 16
+
+        self.add_to_master(note_line.fade_in(rhythm_length * 4 * self.beat), pos + note_pos)
+
+        pos += rhythm_length * 3 * self.beat
+        return pos, word_rhythm
+
+    # # NOT USED
+    # def explore_word_section_2(self, pos, word_rhythm):
+    #     bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+    #
+    #     original_chord_array = [-1, 0, 4, 7]
+    #     chord1, chord1_notes = self.make_chord(drone_voice, original_chord_array)
+    #     chord1 = chord1 - 14
+    #     chord1 = chord1.fade_in(40).fade_out(20)
+    #     new_root = random.choice([-5, -1, 4, 7])
+    #     new_chord_array = [new_root - 1, new_root, new_root + 4, new_root + 7]
+    #     chord2, chord2_notes = self.make_chord(drone_voice, new_chord_array)
+    #     chord2 = chord2 - 14
+    #     chord2 = chord2.fade_in(40).fade_out(20)
+    #
+    #     eight_bar_word = self.get_segment_with_effect(self.s, librosa.effects.time_stretch, len(self.s) / (self.beat * 8))
+    #     word1 = self.match_pitch(eight_bar_word, self.estimate_pitch(chord1_notes[1]), 0)
+    #     word2 = self.match_pitch(eight_bar_word, self.estimate_pitch(chord1_notes[1]), new_root)
+    #
+    #
+    #     self.add_to_master(word1 + (word2.fade_out(self.beat * 2)), pos)
+    #     pos = self.add_to_master(chord1 + (chord2.fade_out(self.beat * 2)), pos)
+    #
+    #     return pos
+
+    def beef_1(self, pos):
+        word_pos = pos
+        for i in range(4):
+            for j in range(len(self.words)):
+                self.change_main_segment(j)
+                bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+                if i == 0:
+                    self.add_to_master(self.s, word_pos)
+                elif i == 1:
+                    self.add_to_master(self.s - (j * 2), word_pos)
+                elif i == 2:
+                    self.add_to_master(self.s - 12, word_pos)
+
+                self.add_to_master(sustain_voice, word_pos)
+                word_pos += 2 * self.beat
+
+        self.change_main_segment(len(self.words) - 1)
+        bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+        drone_line = drone_voice[0:5 * self.beat] - 6
+        for i in range(len(self.words) - 1):
+            self.change_main_segment(len(self.words) - (i + 2))
+            bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+            drone_line = drone_line.append(drone_voice[0:5 * self.beat] - 6, crossfade=self.beat)
+
+        self.add_to_master(drone_line.fade_out(self.beat), pos)
+
+        pos += (8 * self.beat * len(self.words))
 
         return pos
+
+    def beef_2(self, pos):
+        note_line = AudioSegment.silent(0)
+        for i in range(len(self.words)):
+            self.change_main_segment(i)
+            bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+            note = self.match_pitch(note_voice, self.estimate_pitch(sustain_voice), 0)
+            note_line += note + AudioSegment.silent(math.floor((4/3) * self.beat) - len(note))
+
+        sustain_pos = pos
+        for k in range(8):
+            for i in range(len(self.words)):
+                self.change_main_segment(i)
+                bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+                self.add_to_master(sustain_voice, sustain_pos)
+                sustain_pos += 2 * self.beat
+
+        bass_pos = pos
+        total_beats = len(self.words) * 2 * 8
+        for k in range(math.floor(total_beats / 8)):
+            for i in range(6):
+                if i % 3 == 2:
+                    bass_pos += 2 * self.beat
+                ind = i % len(self.words)
+                self.change_main_segment(ind)
+                bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+                self.add_to_master(bass_voice, bass_pos)
+                bass_pos += math.floor(self.beat / 2)
+            bass_pos += self.beat
+
+        voice_pos = pos + ((self.beat * total_beats) / 2)
+        word_ind = 0
+        chunks = []
+        repeats = []
+        while voice_pos < pos + (total_beats * self.beat):
+            self.change_main_segment(word_ind)
+            if len(chunks) < word_ind + 1:
+                num_chunks = random.choice([1, 2, 3])
+                chunks.append(num_chunks)
+                repeats.append([random.choice([1, 1, 2, 3]) for _ in range(num_chunks)])
+            for i in range(chunks[word_ind]):
+                for j in repeats[word_ind]:
+                    self.add_to_master(self.s[i * math.floor(len(self.s) / chunks[word_ind]):(i + 1) * math.floor(len(self.s) / chunks[word_ind])], voice_pos)
+                    voice_pos += math.floor(self.beat * 0.25)
+                voice_pos += math.floor(self.beat * random.choice([0.5, 0.5, 0.5, 0.25]))
+            word_ind = (word_ind + 1) % len(self.words)
+
+        note_line = note_line - 12
+        len_sus = sustain_pos - pos
+        num_note_line = math.ceil(len_sus / len(note_line))
+        pos = self.add_to_master(note_line * num_note_line, pos)
+        return pos
+
+    def beef_3(self, pos):
+        pitches = []
+        words = []
+        for i in range(len(self.words)):
+            self.change_main_segment(i)
+            _, _, end = self.get_dense(self.s, 20)
+            v = self.s[0:end]
+            words.append(self.get_segment_with_effect(v, librosa.effects.time_stretch, len(v) / (self.beat * 6)))
+            bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+            pitches.append(self.estimate_pitch(sustain_voice))
+
+        num_beats = 64
+        word_pos = pos
+        w_1 = 0
+        w_2 = 1 % len(self.words)
+        p = 0
+
+        while word_pos < (pos + (num_beats * self.beat)):
+            self.add_to_master(self.get_segment_with_effect(words[w_1], librosa.effects.pitch_shift, 22050, n_steps=p - self.estimate_pitch(words[w_1])) - 4, word_pos)
+            word_pos += self.beat * 2
+            self.add_to_master(self.get_segment_with_effect(words[w_2], librosa.effects.pitch_shift, 22050, n_steps=(p - self.estimate_pitch(words[w_2])) + random.choice([6, 7])) - 4, word_pos)
+            word_pos += self.beat * 4
+            p = (p + 1) % len(pitches)
+            w_1 = (w_1 + 2) % len(self.words)
+            w_2 = (w_2 + 2) % len(self.words)
+
+        sustain_bass_pos = pos
+        word_ind = 0
+        while sustain_bass_pos < (pos + (num_beats * self.beat)):
+            self.change_main_segment(word_ind)
+            bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+            self.add_to_master(sustain_voice[0:self.beat].fade_out(20), sustain_bass_pos)
+            sustain_bass_pos += self.beat
+            self.add_to_master(bass_voice, sustain_bass_pos)
+            sustain_bass_pos += self.beat * 2
+            word_ind = (word_ind + 1) % len(self.words)
+
+        pos += num_beats * self.beat
+
+        return pos
+
+    def outro(self, pos):
+        for i in range(len(self.words)):
+            self.change_main_segment(i)
+            bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+            sustain_voice_ext = sustain_voice[0:self.beat] + (sustain_voice[self.beat:2*self.beat].fade_in(10).fade_out(10) * 7)
+            self.add_to_master(sustain_voice_ext.fade_out(self.beat), pos)
+            self.add_to_master(bass_voice, pos)
+            pos += self.beat * 2
+            self.add_to_master(bass_voice, pos)
+            pos += self.beat * 2
+            self.add_to_master(self.s, pos)
+            pos += self.beat * 4
+
+        self.change_main_segment(0)
+        bass_voice, sustain_voice, note_voice, drone_voice = self.get_current_voices()
+        self.add_to_master(self.get_segment_with_effect(sustain_voice, librosa.effects.time_stretch, len(sustain_voice) / (self.beat * 16)), pos)
+        self.intro_poem(pos)
+
+        return pos
+
+    def get_current_voices(self):
+        voices = self.voices[self.current_word_index]
+        return voices["bass_voice"], voices["sustain_voice"], voices["note_voice"], voices["drone_voice"]
+
+    # NOT USED
+    # # --------------------------------------------------------------------------------
+    # # generate_song()
+    # #   Establishes master track, calls the various sections and transitions
+    # # --------------------------------------------------------------------------------
+    # def generate_song(self):
+    #     # Establish master segment
+    #     self.master = AudioSegment.silent(0)
+    #
+    #     # Trim the collected word file
+    #     y, sr = librosa.load(self.file_name, 44100)
+    #     y_trim, _ = librosa.effects.trim(y)
+    #     librosa.output.write_wav(self.word + "/trim_" + self.word + ".wav", y_trim, sr)
+    #
+    #     # Create main word segment
+    #     self.s = AudioSegment.from_file(self.word + "/trim_" + self.word + ".wav")
+    #     # Add minimal reverb on word sample
+    #     reverb = (
+    #         AudioEffectsChain()
+    #             .reverb(2)
+    #     )
+    #     self.s = self.get_segment_with_effect(self.s, reverb)
+    #
+    #     # Create percussion segments
+    #     self.closed_hat = AudioSegment.from_file("perc/Closed_Hat_Ana_01.wav")
+    #     self.open_hat = AudioSegment.from_file("perc/Open_Hat_19.wav")
+    #     self.snare = AudioSegment.from_file("perc/Snare_09.wav")
+    #     self.kick = AudioSegment.from_file("perc/Kick_016.wav")
+    #     self.crash = AudioSegment.from_file("perc/Crash_13b.wav")
+    #
+    #     # Set tempo (set in BPM, calculated to mspb)
+    #     bpm_tempo = 134
+    #     self.beat = math.floor(60000 / bpm_tempo)
+    #
+    #     # Call the sections and transitions of the piece
+    #     pos = 0
+    #
+    #     # pos = self.intro(pos)
+    #     # pos = self.transition_morph_to_beat(pos, 4)
+    #     # pos = self.club_beat(pos)
+    #     # pos = self.transition_stretch(pos, 8, 4)
+    #     pos = self.chordal(pos)
+    #
+    #     # WARNING: adding this reverb to the master sounded nice, but removed the ability to pan
+    #     # reverb = (
+    #     #     AudioEffectsChain()
+    #     #         .reverb(2)
+    #     # )
+    #     # self.master = self.get_segment_with_effect(self.master, reverb)
+    #
+    #     # Play the master track
+    #     play(self.master + AudioSegment.silent(1000))
+    #     # self.master.export("draft.wav", format="wav")
+
+    # # NOT USED
+    # # --------------------------------------------------------------------------------
+    # # intro()
+    # #   Uses panning and repetition to get the listener acquainted with the word
+    # #   pos: position at which to start this section
+    # # --------------------------------------------------------------------------------
+    # def intro(self, pos):
+    #     # Play the word normally twice
+    #     self.add_to_master(self.s, pos)
+    #     pos += 4 * self.beat
+    #     self.add_to_master(self.s, pos)
+    #     pos += 4 * self.beat
+    #
+    #     # Speed up and pan
+    #     for i in range(2):
+    #         self.add_to_master(apply_gain_stereo(self.s, left_gain=1.0, right_gain=-3 * i), pos)
+    #         pos += 1 * self.beat
+    #         self.add_to_master(apply_gain_stereo(self.s, left_gain=-3 * i, right_gain=1.0), pos)
+    #         pos += 1 * self.beat
+    #     for i in range(2):
+    #         self.add_to_master(apply_gain_stereo(self.s, left_gain=1.0, right_gain=-6 - (3 * i)), pos)
+    #         pos += 0.5 * self.beat
+    #         self.add_to_master(apply_gain_stereo(self.s, left_gain=-6 - (3 * i), right_gain=1.0), pos)
+    #         pos += 0.5 * self.beat
+    #
+    #     for i in range(8):
+    #         for i in range(2):
+    #             self.add_to_master(apply_gain_stereo(self.s, left_gain=-10, right_gain=-18), pos)
+    #             pos += 0.065 * self.beat
+    #             self.add_to_master(apply_gain_stereo(self.s, left_gain=-18, right_gain=-10), pos)
+    #             pos += 0.065 * self.beat
+    #
+    #     # Play the word in three octaves
+    #     pos += 3 * self.beat
+    #     self.add_to_master(self.s, pos)
+    #     self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.pitch_shift, 22050, n_steps=-12), pos)
+    #     self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.pitch_shift, 22050, n_steps=12), pos)
+    #     pos += self.beat
+    #     return pos
+
+    # # NOT USED
+    # # --------------------------------------------------------------------------------
+    # # transition_morph_to_beat()
+    # #   Transitions from the pronunciation to beat-wise split of the word
+    # #   pos: position at which to start this section
+    # #   iterations: how many times to separate the syllables of the word before each
+    # #       syllable is on a beat
+    # # --------------------------------------------------------------------------------
+    # def transition_morph_to_beat(self, pos, iterations):
+    #     # Split the track in 4, even though we only use the first 3 chunks, as the last is often silent
+    #     slice_len = len(self.s) / 4
+    #
+    #     i = slice_len
+    #
+    #     # Gradually spread apart the playback of the chunks
+    #     while i < self.beat:
+    #         for j in range(3):
+    #             pos = self.add_to_master(self.s[j * len(self.s) / 4:(j + 1) * (len(self.s) / 4)], pos + (i - slice_len))
+    #         pos = self.add_to_master(AudioSegment.silent(slice_len), pos + (i - slice_len))
+    #
+    #         i += (self.beat - slice_len) / iterations
+    #
+    #     return pos
+
+    # # NOT USED
+    # # --------------------------------------------------------------------------------
+    # # transition_stretch()
+    # #   Transitions by stretching the word out
+    # #   pos: position at which to start this section
+    # #   iterations: how many times to say the word
+    # #   length: how many beats long the last iteration should be
+    # # --------------------------------------------------------------------------------
+    # def transition_stretch(self, pos, iterations, length):
+    #     # Time stretch relative to the desired end length and the number of times to play the sound
+    #     for i in range(iterations):
+    #         pos = self.add_to_master(self.get_segment_with_effect(self.s, librosa.effects.time_stretch, len(self.s) / ((length / (iterations - i)) * len(self.s))), pos)
+    #
+    #     return pos
+
+    # # NOT USED
+    # # --------------------------------------------------------------------------------
+    # # club_beat()
+    # #   Section with a driving kick drum and randomly pitched and repeated words
+    # #   pos: position at which to start this section
+    # # --------------------------------------------------------------------------------
+    # def club_beat(self, pos):
+    #     # Play for 32 beats
+    #     for i in range(32):
+    #         # Kick on every beat
+    #         self.add_to_master(self.kick, pos)
+    #         # Between 0 and 3 repetitions of the word chunk per beat
+    #         num_beats = random.randrange(0, 4, 1)
+    #
+    #         # Choose either the first or second chunk out of fourths of the word
+    #         ind = random.randrange(0, 2, 1)
+    #         note = self.s[ind * len(self.s) / 4:(ind + 1) * (len(self.s) / 4)]
+    #         # Play the chunk num_beats times, at a random pitch between two octaves
+    #         for j in range(num_beats):
+    #             self.add_to_master(self.get_segment_with_effect(note, librosa.effects.pitch_shift, 22050, n_steps=random.randrange(-12, 12, 1)), pos + (j * math.floor(self.beat / num_beats)))
+    #
+    #         pos += self.beat
+    #     return pos
+
+    # # NOT USED
+    # # --------------------------------------------------------------------------------
+    # # chordal()
+    # #   Section that uses chords built from portions of the word stretched as well as
+    # #       a walking bass line derived from the word set in the chord notes
+    # #   pos: position at which to start this section
+    # # --------------------------------------------------------------------------------
+    # def chordal(self, pos):
+    #     # Creating the bass voice
+    #     # Grab the densest eighth note of the word
+    #     bass, _, _ = self.get_dense(self.s, self.beat / 2)
+    #     # Drop it two octaves
+    #     bass = self.get_segment_with_effect(bass, librosa.effects.pitch_shift, 22050, n_steps=-24)
+    #     # Restrict frequencies to 100-1500 Hz
+    #     lp_fx = (
+    #         AudioEffectsChain()
+    #             .lowpass(1500)
+    #             .highpass(100)
+    #     )
+    #     bass = self.get_segment_with_effect(bass, lp_fx)
+    #     # Stretch it out 4x
+    #     bass = self.get_segment_with_effect(bass, librosa.effects.time_stretch, 0.25)
+    #     # Get the densest beat from this latest stretch
+    #     bass, _, _ = self.get_dense(bass, self.beat)
+    #     # Ensure it's a full beat long
+    #     if(len(bass) < self.beat):
+    #         bass = bass + AudioSegment.silent(self.beat - len(bass))
+    #     # Pitch detect the bass
+    #     root = self.estimate_pitch(bass)
+    #     # Create a 2-beat bass sample
+    #     bass_half_note = self.get_segment_with_effect(bass, librosa.effects.time_stretch, 0.5)
+    #     bass_half_note = bass_half_note[0:min(self.beat * 2, len(bass_half_note))]
+    #     if (len(bass_half_note) < (2 * self.beat)):
+    #         bass_half_note = bass_half_note + AudioSegment.silent(2 * self.beat - len(bass))
+    #
+    #     # Creating the chord voice
+    #     # Take the first fourth of the word file
+    #     note = self.s[0:(1 * (len(self.s))) / 4]
+    #     # Repitch it to the bass
+    #     note = self.match_pitch(note, root, 0)
+    #     # Stretch the note over four beats
+    #     note = self.get_segment_with_effect(note, librosa.effects.time_stretch, len(note) / (4 * self.beat))
+    #     # Get the densest beat from this stretch
+    #     note, _, _ = self.get_dense(note, self.beat)
+    #
+    #     # Stretch the note to the chord length
+    #     chord_length = 16
+    #     note = self.get_segment_with_effect(note, librosa.effects.time_stretch, len(note) / (chord_length * self.beat))
+    #     note = note[0:min(chord_length*self.beat, chord_length*(len(note) - 1))]
+    #
+    #     # Specify the type of chord (major seventh chord)
+    #     chord_vals = [-1, 0, 4, 7]
+    #     # Make the first chord (reduce by 8dB as the layered voices make it loud
+    #     chord_one = self.make_chord(note, chord_vals)[0] - 8
+    #     if(len(chord_one) < chord_length * self.beat):
+    #         chord_one = chord_one + AudioSegment.silent((chord_length * self.beat) - len(chord_one))
+    #     # Shift the chord a fourth up
+    #     chord_two = self.get_segment_with_effect(chord_one, librosa.effects.pitch_shift, 22050, n_steps=5)
+    #
+    #     # Transition by slowly adding three notes of the chord
+    #     self.add_to_master(note.fade_in(10).fade_out(1000), pos)
+    #     pos += math.floor(len(note) / 3)
+    #     self.add_to_master(self.make_chord(note, [-1, 0])[0].fade_in(10).fade_out(1000)[0:math.floor((2 * len(note)) / 3)] - 4, pos)
+    #     pos += math.floor(len(note) / 3)
+    #     self.add_to_master(self.make_chord(note, [-1, 0, 7])[0].fade_in(10).fade_out(1000)[0:math.floor((len(note)) / 3)] - 8, pos)
+    #     pos += math.floor(len(note) / 3)
+    #
+    #     # Copy the position for the bass
+    #     bass_pos = pos
+    #
+    #     for section in range(2):
+    #         # On the first pass, hi-hat pickup bar
+    #         if (section == 0):
+    #             hi_hat_pos = pos + (((chord_length * 2) - 4) * self.beat)
+    #             self.add_to_master(self.closed_hat, hi_hat_pos)
+    #             hi_hat_pos += self.beat
+    #             self.add_to_master(self.closed_hat, hi_hat_pos)
+    #             hi_hat_pos += self.beat
+    #             for i in range(2):
+    #                 self.add_to_master(self.closed_hat, hi_hat_pos)
+    #                 hi_hat_pos += (self.beat / 2)
+    #             for i in range(3):
+    #                 self.add_to_master(self.closed_hat, hi_hat_pos)
+    #                 hi_hat_pos += (self.beat / 3)
+    #         # Hi-hat line with randomly placed triplet and quarter note bars
+    #         else:
+    #             trip_beat = np.random.choice(range(4))
+    #             quarter_beat = np.random.choice(range(4))
+    #             hi_hat_pos = pos
+    #             for i in range(math.floor(chord_length / 4)):
+    #                 hi_hat_pos += self.beat * trip_beat
+    #                 for j in range(3):
+    #                     self.add_to_master(self.closed_hat, hi_hat_pos)
+    #                     hi_hat_pos += math.floor(self.beat / 3)
+    #                 hi_hat_pos += self.beat * (3 - trip_beat)
+    #
+    #                 hi_hat_pos += self.beat * quarter_beat
+    #                 self.add_to_master(self.closed_hat, hi_hat_pos)
+    #                 hi_hat_pos += self.beat
+    #                 hi_hat_pos += self.beat * (3 - quarter_beat)
+    #
+    #         # Walk the bass in half notes within the chord context
+    #         for i in range(math.floor(chord_length / 2)):
+    #             self.add_to_master(self.get_segment_with_effect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice(chord_vals)).fade_in(10), bass_pos)
+    #             bass_pos += len(bass_half_note)
+    #         for i in range(math.floor(chord_length / 2)):
+    #             self.add_to_master(self.get_segment_with_effect(bass_half_note, librosa.effects.pitch_shift, 22050, n_steps=np.random.choice([v + 5 for v in chord_vals])).fade_in(10), bass_pos)
+    #             bass_pos += len(bass_half_note)
+    #
+    #         # Add the chords
+    #         pos = self.add_to_master(chord_one.fade_in(200), pos)
+    #         self.add_to_master(self.crash - 8, pos)
+    #         pos = self.add_to_master(chord_two.fade_in(200), pos)
+
+
+
 
     # --------------------------------------------------------------------------------
     # get_dense()
@@ -771,10 +938,16 @@ class WordComp:
                     .reverb(2)
             )
             self.s = self.get_segment_with_effect(self.s, reverb)
+            if len(self.voices) == len(self.words):
+                self.change_voices(index)
             self.current_word_index = index
             print("Word is now '{}'".format(self.words[index]))
         else:
             print("Word index out of range.")
+
+    def change_voices(self, index):
+        self.current_word_index = index
+        self.current_voices = self.voices[index]
 
     # --------------------------------------------------------------------------------
     # add_to_master()
